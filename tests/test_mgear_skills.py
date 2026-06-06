@@ -1,4 +1,10 @@
-"""Unit tests for mGear Shifter skill tools."""
+"""Unit tests for mGear Shifter skill tools.
+
+Tests constrain against the VERIFIED real mGear upstream API surface:
+- mgear.shifter.getComponentDirectories / importComponentGuide
+- mgear.shifter.guide_manager.draw_comp / build_from_selection
+- mgear.shifter.io.export_guide_template / build_from_file
+"""
 
 from __future__ import annotations
 
@@ -26,27 +32,41 @@ def _load_script(script_name: str):
     return mod
 
 
-def _make_mock_module():
-    """Create a MagicMock with __path__ and __spec__ set for Python import system compatibility."""
+def _make_mock_mgear():
+    """Create a mock mgear top-level package."""
     mock = MagicMock()
-    mock.__path__ = ["/mock/pkg"]
-    mock.__spec__ = None
+    mock.__path__ = ["/mock/mgear"]
+    mock.__version__ = "4.0.0"
     return mock
 
 
 def _make_mock_modules(**submodules):
-    """Build a sys.modules patch dict with mgear + mgear.shifter + submodules.
+    """Build a sys.modules patch dict with mgear + mgear.shifter + verified submodules.
 
-    Submodule keys are mapped to ``mgear.shifter.<name>`` (e.g. ``component``
-    becomes ``mgear.shifter.component``) matching the Python import chain
-    ``import mgear.shifter.component``.
+    The mock ``mgear.shifter`` is set up with ``getComponentDirectories`` — the
+    verified real entry point for enumerating component types.
+
+    Submodule keys (e.g. ``guide_manager``, ``io``) are wired as
+    ``mgear.shifter.<name>`` and also attached as attributes on the shifter mock
+    so ``import mgear.shifter.guide_manager`` resolves correctly.
     """
-    mock_mgear = _make_mock_module()
-    mock_mgear.__path__ = ["/mock/mgear"]
-    mock_mgear.__version__ = "4.0.0"
-
-    mock_shifter = _make_mock_module()
+    mock_mgear = _make_mock_mgear()
+    mock_shifter = MagicMock()
     mock_shifter.__path__ = ["/mock/mgear/shifter"]
+
+    # getComponentDirectories — verified real mGear API (shifter/__init__.py:57-84)
+    mock_shifter.getComponentDirectories = MagicMock(
+        return_value=[
+            Path("/mock/mgear/shifter/components/arm_2jnt_01"),
+            Path("/mock/mgear/shifter/components/leg_2jnt_01"),
+            Path("/mock/mgear/shifter/components/spine_ik_01"),
+        ]
+    )
+
+    # Wire mock_mgear.shifter so "import mgear.shifter" attribute chaining
+    # through mgear.shifter.xxx resolves to the configured mock_shifter,
+    # not an auto-generated MagicMock.
+    mock_mgear.shifter = mock_shifter
 
     modules = {"mgear": mock_mgear, "mgear.shifter": mock_shifter}
     for name, mock in submodules.items():
@@ -54,10 +74,14 @@ def _make_mock_modules(**submodules):
         mock.__path__ = ["/mock/mgear/shifter/{}".format(name)]
         mock.__spec__ = None
         modules[full_name] = mock
-        # Wire to parent so attribute access works
         setattr(mock_shifter, name, mock)
 
     return modules
+
+
+# ---------------------------------------------------------------------------
+# inspect_mgear_environment
+# ---------------------------------------------------------------------------
 
 
 class TestInspectMgearEnvironment:
@@ -99,14 +123,37 @@ class TestInspectMgearEnvironment:
         mock_mgear.__version__ = "3.0.0"
 
         with patch.dict(sys.modules, {"mgear": mock_mgear}):
-            # Ensure shifter import fails
             with patch("importlib.util.find_spec", side_effect=lambda name: MagicMock() if name == "mgear" else None):
                 mod = _load_script("inspect_mgear_environment")
                 result = mod.inspect_mgear_environment()
-                # mgear found but shifter not available -> still success
                 assert result["success"] is True
                 ctx = result.get("context", {})
                 assert ctx.get("shifter_available") is False
+
+    def test_key_modules_includes_verified_modules(self):
+        """Verify key_modules lists the verified real mGear module surfaces."""
+        mod = _load_script("inspect_mgear_environment")
+        mock_mgear = MagicMock()
+        mock_mgear.__version__ = "4.0.0"
+        mock_mgear.__path__ = ["/mock/path/mgear"]
+
+        with patch.dict(sys.modules, {"mgear": mock_mgear, "mgear.shifter": MagicMock()}):
+            with patch.object(mod, "_module_available", return_value=True):
+                result = mod.inspect_mgear_environment(verbose=True)
+                ctx = result.get("context", {})
+                key_modules = ctx.get("key_modules", {})
+                assert "mgear.shifter.guide_manager" in key_modules, (
+                    "key_modules must include mgear.shifter.guide_manager"
+                )
+                assert "mgear.shifter.io" in key_modules, "key_modules must include mgear.shifter.io"
+                assert "mgear.shifter.rig" not in key_modules, (
+                    "mgear.shifter.rig does not exist upstream; must not appear in key_modules"
+                )
+
+
+# ---------------------------------------------------------------------------
+# list_shifter_components
+# ---------------------------------------------------------------------------
 
 
 class TestListShifterComponents:
@@ -124,30 +171,34 @@ class TestListShifterComponents:
         assert isinstance(result, dict)
         assert "success" in result
 
-    def test_with_mock_shifter(self):
-        mock_comp = MagicMock()
-        mock_comp.getComponentList = MagicMock(return_value=["arm_2jnt_01", "leg_2jnt_01", "spine_ik_01"])
-        mock_modules = _make_mock_modules(component=mock_comp)
+    def test_calls_getComponentDirectories(self):
+        """list_shifter_components must use getComponentDirectories — the verified real API."""
+        mock_modules = _make_mock_modules()
+        mock_shifter = mock_modules["mgear.shifter"]
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("list_shifter_components")
             result = mod.list_shifter_components(include_guides=False)
             assert result["success"] is True
+            mock_shifter.getComponentDirectories.assert_called_once()
             ctx = result.get("context", {})
-            assert "components" in ctx
-            assert "total_components" in ctx
+            assert ctx.get("total_components") == 3
 
     def test_filter_by_component_type(self):
-        mock_comp = MagicMock()
-        mock_comp.getComponentList = MagicMock(return_value=["arm_2jnt_01", "leg_2jnt_01", "spine_ik_01"])
-        mock_modules = _make_mock_modules(component=mock_comp)
+        mock_modules = _make_mock_modules()
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("list_shifter_components")
             result = mod.list_shifter_components(include_guides=False, component_type="arm")
             assert result["success"] is True
             ctx = result.get("context", {})
-            assert "components" in ctx
+            components = ctx.get("components", [])
+            assert all("arm" in c for c in components)
+
+
+# ---------------------------------------------------------------------------
+# create_shifter_guide_from_template
+# ---------------------------------------------------------------------------
 
 
 class TestCreateShifterGuideFromTemplate:
@@ -155,13 +206,13 @@ class TestCreateShifterGuideFromTemplate:
 
     def test_graceful_degradation_when_mgear_missing(self):
         mod = _load_script("create_shifter_guide_from_template")
-        result = mod.create_shifter_guide_from_template(guide_name="test_guide", template="arm")
+        result = mod.create_shifter_guide_from_template(guide_name="test_guide", template="arm_2jnt_01")
         assert result["success"] is False
         assert "not available" in result["message"].lower()
 
     def test_main_entry_point(self):
         mod = _load_script("create_shifter_guide_from_template")
-        result = mod.main(guide_name="test", template="spine")
+        result = mod.main(guide_name="test", template="spine_ik_01")
         assert isinstance(result, dict)
         assert "success" in result
 
@@ -170,19 +221,17 @@ class TestCreateShifterGuideFromTemplate:
         with pytest.raises(TypeError):
             mod.create_shifter_guide_from_template()
 
-    def test_with_mock_guide_creation(self):
-        mock_manager = MagicMock()
-        mock_manager.return_value.createGuide = MagicMock(return_value="guide1")
-        mock_guide = MagicMock()
-        mock_guide.GuideManager = mock_manager
-        mock_modules = _make_mock_modules(guide=mock_guide)
-        mock_modules["mgear.shifter"].guide = mock_guide
+    def test_calls_draw_comp(self):
+        """create_shifter_guide must call draw_comp — the verified real mGear API."""
+        mock_gui_mgr = MagicMock()
+        mock_gui_mgr.draw_comp = MagicMock(return_value="guide1")
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("create_shifter_guide_from_template")
             result = mod.create_shifter_guide_from_template(
                 guide_name="my_guide",
-                template="arm",
+                template="arm_2jnt_01",
                 position=[0.0, 10.0, 0.0],
                 parent_guide="root_guide",
                 parameters={"side": "L"},
@@ -190,8 +239,33 @@ class TestCreateShifterGuideFromTemplate:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("guide_name") == "my_guide"
-            assert ctx.get("template") == "arm"
-            assert "node" in ctx
+            assert ctx.get("template") == "arm_2jnt_01"
+            assert ctx.get("node") == "guide1"
+
+            mock_gui_mgr.draw_comp.assert_called_once_with(
+                comp_type="arm_2jnt_01",
+                name="my_guide",
+                parent="root_guide",
+                pos=[0.0, 10.0, 0.0],
+                side="L",
+            )
+
+    def test_draw_comp_no_node_returned(self):
+        """When draw_comp returns None, result is still success with deferred note."""
+        mock_gui_mgr = MagicMock()
+        mock_gui_mgr.draw_comp = MagicMock(return_value=None)
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("create_shifter_guide_from_template")
+            result = mod.create_shifter_guide_from_template(guide_name="g", template="leg_2jnt_01")
+            assert result["success"] is True
+            assert "node" not in result.get("context", {})
+
+
+# ---------------------------------------------------------------------------
+# build_shifter_rig
+# ---------------------------------------------------------------------------
 
 
 class TestBuildShifterRig:
@@ -211,7 +285,6 @@ class TestBuildShifterRig:
 
     def test_invalid_build_type(self):
         mod = _load_script("build_shifter_rig")
-        # Invalid build_type should error before even trying mgear
         result = mod.build_shifter_rig(build_type="invalid")
         assert result["success"] is False
         assert "Invalid" in result["message"]
@@ -226,13 +299,11 @@ class TestBuildShifterRig:
         result = mod.build_shifter_rig(build_type="preview")
         assert result["success"] is False  # mGear missing, but build_type accepted
 
-    def test_with_mock_rig_build(self):
-        mock_rigger = MagicMock()
-        mock_rigger.return_value.build = MagicMock(return_value=["rig_result"])
-        mock_rig = MagicMock()
-        mock_rig.Rigger = mock_rigger
-        mock_modules = _make_mock_modules(rig=mock_rig)
-        mock_modules["mgear.shifter"].rig = mock_rig
+    def test_calls_build_from_selection(self):
+        """build_shifter_rig must call build_from_selection — the verified real mGear API."""
+        mock_gui_mgr = MagicMock()
+        mock_gui_mgr.build_from_selection = MagicMock(return_value=["rig_result1"])
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("build_shifter_rig")
@@ -240,21 +311,41 @@ class TestBuildShifterRig:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("guide_built") == "my_guide"
+            assert ctx.get("build_type") == "full"
+            assert ctx.get("built_guides") == ["rig_result1"]
+            mock_gui_mgr.build_from_selection.assert_called_once()
 
-    def test_build_all_guides(self):
-        mock_rigger = MagicMock()
-        mock_rigger.return_value.buildAll = MagicMock(return_value=["rig1", "rig2"])
-        mock_rig = MagicMock()
-        mock_rig.Rigger = mock_rigger
-        mock_modules = _make_mock_modules(rig=mock_rig)
-        mock_modules["mgear.shifter"].rig = mock_rig
+    def test_build_from_selection_no_guide_name(self):
+        """When no guide_name is given, builds from whatever is selected."""
+        mock_gui_mgr = MagicMock()
+        mock_gui_mgr.build_from_selection = MagicMock(return_value=["rig1", "rig2"])
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("build_shifter_rig")
             result = mod.build_shifter_rig()
             assert result["success"] is True
             ctx = result.get("context", {})
-            assert ctx.get("guide_built") == "all"
+            assert ctx.get("guide_built") == "selection"
+            assert ctx.get("built_guides") == ["rig1", "rig2"]
+            mock_gui_mgr.build_from_selection.assert_called_once()
+
+    def test_build_from_selection_single_result(self):
+        """When build_from_selection returns a single node (not a list)."""
+        mock_gui_mgr = MagicMock()
+        mock_gui_mgr.build_from_selection = MagicMock(return_value="single_rig")
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("build_shifter_rig")
+            result = mod.build_shifter_rig(guide_name="test")
+            assert result["success"] is True
+            assert result["context"]["built_guides"] == ["single_rig"]
+
+
+# ---------------------------------------------------------------------------
+# export_shifter_guide_template
+# ---------------------------------------------------------------------------
 
 
 class TestExportShifterGuideTemplate:
@@ -277,13 +368,16 @@ class TestExportShifterGuideTemplate:
         with pytest.raises(TypeError):
             mod.export_shifter_guide_template()
 
-    def test_with_mock_export_base64(self):
-        mock_manager = MagicMock()
-        mock_manager.return_value.exportTemplate = MagicMock(return_value=b"template_data")
-        mock_template = MagicMock()
-        mock_template.TemplateManager = mock_manager
-        mock_modules = _make_mock_modules(template=mock_template)
-        mock_modules["mgear.shifter"].template = mock_template
+    def test_calls_export_guide_template_base64(self):
+        """export must call export_guide_template — the verified real mGear API (io.py:149-215)."""
+        mock_io = MagicMock()
+
+        def _fake_export(guide_name, path):
+            with open(path, "wb") as f:
+                f.write(b"template_data_bytes")
+
+        mock_io.export_guide_template = MagicMock(side_effect=_fake_export)
+        mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("export_shifter_guide_template")
@@ -291,15 +385,13 @@ class TestExportShifterGuideTemplate:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert "template_base64" in ctx
+            assert ctx["template_base64"]  # non-empty base64
+            mock_io.export_guide_template.assert_called_once()
 
-    def test_with_mock_export_to_file(self, tmp_path):
-        output = tmp_path / "exported_template.json"
-        mock_manager = MagicMock()
-        mock_manager.return_value.exportTemplate = MagicMock(return_value='{"template": "data"}')
-        mock_template = MagicMock()
-        mock_template.TemplateManager = mock_manager
-        mock_modules = _make_mock_modules(template=mock_template)
-        mock_modules["mgear.shifter"].template = mock_template
+    def test_calls_export_guide_template_to_file(self, tmp_path):
+        output = tmp_path / "exported_template.gct"
+        mock_io = MagicMock()
+        mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("export_shifter_guide_template")
@@ -311,19 +403,27 @@ class TestExportShifterGuideTemplate:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("output_path") == str(output)
+            mock_io.export_guide_template.assert_called_once_with("my_guide", str(output))
 
     def test_no_metadata_export(self):
-        mock_manager = MagicMock()
-        mock_manager.return_value.exportTemplate = MagicMock(return_value=b"data")
-        mock_template = MagicMock()
-        mock_template.TemplateManager = mock_manager
-        mock_modules = _make_mock_modules(template=mock_template)
-        mock_modules["mgear.shifter"].template = mock_template
+        mock_io = MagicMock()
+
+        def _fake_export(guide_name, path):
+            with open(path, "wb") as f:
+                f.write(b"data")
+
+        mock_io.export_guide_template = MagicMock(side_effect=_fake_export)
+        mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("export_shifter_guide_template")
             result = mod.export_shifter_guide_template(guide_name="my_guide", include_metadata=False)
             assert result["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# ResultDictConformance
+# ---------------------------------------------------------------------------
 
 
 class TestResultDictConformance:
@@ -332,7 +432,7 @@ class TestResultDictConformance:
     TOOLS = [
         ("inspect_mgear_environment", {}),
         ("list_shifter_components", {}),
-        ("create_shifter_guide_from_template", {"guide_name": "t", "template": "arm"}),
+        ("create_shifter_guide_from_template", {"guide_name": "t", "template": "arm_2jnt_01"}),
         ("build_shifter_rig", {}),
         ("export_shifter_guide_template", {"guide_name": "t"}),
     ]

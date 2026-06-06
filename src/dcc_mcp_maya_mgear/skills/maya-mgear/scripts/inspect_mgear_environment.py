@@ -70,7 +70,8 @@ def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
                     "mgear.shifter",
                     "mgear.shifter.component",
                     "mgear.shifter.guide",
-                    "mgear.shifter.rig",
+                    "mgear.shifter.guide_manager",
+                    "mgear.shifter.io",
                     "mgear.anim_picker",
                 ):
                     key_modules[mod] = _module_available(mod)

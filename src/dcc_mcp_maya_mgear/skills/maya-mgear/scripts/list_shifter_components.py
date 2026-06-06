@@ -2,30 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
-def _get_component_list() -> List[Any]:
-    """Try to get the Shifter component list via the preferred API path."""
-    import mgear.shifter.component as comp
+def _get_component_list() -> List[str]:
+    """Enumerate available Shifter component types via the real mGear API."""
+    import mgear.shifter
 
-    # mGear Shifter component registry
-    # Preferred: getComponentList()
-    if hasattr(comp, "getComponentList"):
-        return list(comp.getComponentList())
-
-    # Fallback: iterate over component registry mapping
-    if hasattr(comp, "componentMapping"):
-        return list(comp.componentMapping.keys())
-
-    # Fallback: try ComponentManager
-    manager = getattr(comp, "ComponentManager", None)
-    if manager is not None and hasattr(manager, "getAvailableComponents"):
-        return list(manager.getAvailableComponents())
-
-    return []
+    # getComponentDirectories() — verified real mGear API
+    # (release/scripts/mgear/shifter/__init__.py:57-84)
+    comp_dirs = mgear.shifter.getComponentDirectories()
+    return [os.path.basename(str(d)) for d in comp_dirs]
 
 
 def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
@@ -40,7 +30,6 @@ def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
 
     guides: List[Dict[str, Any]] = []
     try:
-        # mGear guides are typically stored in a namespace or have a specific attribute
         all_transforms = cmds.ls(type="transform", long=True) or []
         for node in all_transforms:
             try:
@@ -56,7 +45,6 @@ def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
             except Exception:  # noqa: PERF203
                 continue
 
-        # Also try the mgear guide rig top node convention
         if not guides:
             for node in all_transforms:
                 if "guide" in node.lower() or "Guide" in node:
