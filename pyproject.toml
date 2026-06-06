@@ -49,12 +49,16 @@ packages = ["src/dcc_mcp_maya_mgear"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["src", "tests"]
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["dcc_mcp_maya_mgear"]
+source = ["src"]
 branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
 
 [tool.ruff]
 line-length = 120

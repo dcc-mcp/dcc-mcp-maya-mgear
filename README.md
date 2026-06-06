@@ -39,6 +39,57 @@ ruff check src/ tests/
 pytest tests/
 ```
 
+## Testing
+
+Tests are located in `tests/` and use pytest with signature-constrained mocks
+that match the real mGear upstream API.  The test suite validates all 5 MVP
+tools across multiple scenarios:
+
+- **Graceful degradation** — every tool returns a proper error result when
+  mGear is not installed (success=False, error populated, prompt with
+  actionable guidance).
+- **API contract** — mocks enforce real mGear function signatures; calling
+  `draw_comp()` with wrong kwarg names or `build_from_selection()` with
+  extra arguments causes a test failure.
+- **Partial availability** — tools handle broken sub-modules,
+  `RuntimeError` from upstream, and missing Maya commands safely.
+
+### Running tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run with coverage report
+pytest tests/ --cov --cov-report=term
+
+# Run a single test module
+pytest tests/test_mgear_skills.py -v
+```
+
+### Coverage
+
+Coverage is tracked across all source modules under `src/`.  The CI
+pipeline uploads `coverage.xml` to Codecov on every push and PR.
+Minimum expected coverage: ≥80% per module.
+
+Current coverage baseline (68 tests, all 5 tools): **87%**.
+
+### Linting
+
+```bash
+ruff check src/ tests/
+ruff format --check src/ tests/
+```
+
+## CI
+
+| Job | Matrix | Purpose |
+|-----|--------|---------|
+| Test | 3 OS × 5 Python versions | Unit tests + coverage |
+| Lint | ubuntu / 3.12 | Ruff check + format |
+| Skill Lint | ubuntu / 3.12 | Validate SKILL.md + tools.yaml |
+
 ## License
 
 MIT
