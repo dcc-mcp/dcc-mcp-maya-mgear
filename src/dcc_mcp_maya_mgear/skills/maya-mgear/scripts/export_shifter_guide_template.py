@@ -40,7 +40,9 @@ def _export_template(
     """
     import mgear.shifter.io as shifter_io
 
-    _select_guide(guide_name)
+    ok = _select_guide(guide_name)
+    if not ok:
+        return {"guide_name": guide_name, "error": "Guide '{}' not found in scene".format(guide_name)}
 
     meta = {"include_metadata": include_metadata}
     result: Dict[str, Any] = {"guide_name": guide_name, "include_metadata": include_metadata}
@@ -89,6 +91,13 @@ def export_shifter_guide_template(
             )
 
         result = _export_template(guide_name, output_path, include_metadata)
+
+        if result.get("error"):
+            return skill_error(
+                result["error"],
+                "Guide '{}' selection failed".format(guide_name),
+                prompt="Verify the guide name. Use list_shifter_components to see available guides.",
+            )
 
         if output_path:
             msg = "Exported template to {}".format(output_path)
