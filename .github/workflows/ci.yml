@@ -158,6 +158,11 @@ jobs:
           for i, entry in enumerate(entries):
               prefix = f"entries[{i}]"
 
+              # guard: entry must be a dict before any .get() call
+              if not isinstance(entry, dict):
+                  errors.append(f"{prefix}: must be a JSON object, got {type(entry).__name__}")
+                  continue
+
               # required fields
               for field in REQUIRED:
                   if field not in entry or not entry[field]:
@@ -189,29 +194,30 @@ jobs:
               if ver and not re.match(r"^\d+\.\d+\.\d+", ver):
                   errors.append(f"{prefix}: 'version' should be semver-like: {ver!r}")
 
-              # install block validation
+              # install block — required; CLI install fails without it
               inst = entry.get("install")
-              if inst is not None:
-                  if not isinstance(inst, dict):
-                      errors.append(f"{prefix}: 'install' must be an object")
-                  else:
-                      itype = inst.get("type", "")
-                      if not itype:
-                          errors.append(f"{prefix}: install.type is required")
-                      elif itype not in VALID_INSTALL_TYPES:
-                          errors.append(f"{prefix}: install.type must be one of {sorted(VALID_INSTALL_TYPES)}")
+              if inst is None:
+                  errors.append(f"{prefix}: missing required 'install' block")
+              elif not isinstance(inst, dict):
+                  errors.append(f"{prefix}: 'install' must be an object")
+              else:
+                  itype = inst.get("type", "")
+                  if not itype:
+                      errors.append(f"{prefix}: install.type is required")
+                  elif itype not in VALID_INSTALL_TYPES:
+                      errors.append(f"{prefix}: install.type must be one of {sorted(VALID_INSTALL_TYPES)}")
 
-                      iurl = inst.get("url", "")
-                      if not iurl:
-                          errors.append(f"{prefix}: install.url is required")
-                      elif not iurl.startswith("https://"):
-                          errors.append(f"{prefix}: install.url must be an HTTPS URL")
+                  iurl = inst.get("url", "")
+                  if not iurl:
+                      errors.append(f"{prefix}: install.url is required")
+                  elif not iurl.startswith("https://"):
+                      errors.append(f"{prefix}: install.url must be an HTTPS URL")
 
-                      iref = inst.get("ref", "")
-                      if not iref:
-                          errors.append(f"{prefix}: install.ref is required")
-                      elif itype == "git" and re.search(r"[<>|;]", iref):
-                          errors.append(f"{prefix}: install.ref contains unsafe characters: {iref!r}")
+                  iref = inst.get("ref", "")
+                  if not iref:
+                      errors.append(f"{prefix}: install.ref is required")
+                  elif itype == "git" and re.search(r"[<>|;]", iref):
+                      errors.append(f"{prefix}: install.ref contains unsafe characters: {iref!r}")
 
               # icon field validation
               icon = entry.get("icon")
@@ -220,11 +226,8 @@ jobs:
                       errors.append(f"{prefix}: 'icon' must be a string")
                   else:
                       if icon.startswith("https://"):
-                          # absolute URL — just check basic URL shape
-                          if not icon.startswith("https://"):
-                              errors.append(f"{prefix}: icon URL must use HTTPS: {icon!r}")
+                          pass
                       else:
-                          # relative path — must exist in repo
                           icon_path = pathlib.Path(icon)
                           if not icon_path.exists():
                               errors.append(f"{prefix}: icon file not found: {icon!r}")
