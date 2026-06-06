@@ -1,4 +1,9 @@
-"""Build a rig from an existing Shifter guide in the scene."""
+"""Build a rig from an existing Shifter guide in the scene.
+
+Real mGear API: ``mgear.shifter.guide_manager.build_from_selection()``
+(guide_manager.py:86-95).  This function takes no arguments — it builds
+whatever guide(s) are currently selected in Maya.
+"""
 
 from __future__ import annotations
 
@@ -8,31 +13,34 @@ from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_
 
 
 def _select_guide(guide_name: str) -> bool:
-    """Select a guide node in Maya by name. Returns True if selection succeeded."""
+    """Select a guide node in Maya by name.  Returns True on success."""
     try:
-        import maya.cmds as cmds
-
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        return False
+    try:
         cmds.select(guide_name, replace=True)
         return True
     except Exception:
         return False
 
 
-def _build_rig(guide_name: Optional[str], build_type: str) -> Dict[str, Any]:
-    """Build a rig using the real mGear Shifter API."""
+def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
+    """Build a rig via ``build_from_selection()`` — the real mGear API.
+
+    The function takes **no arguments**.  The caller must pre-select the
+    target guide(s) in Maya before invoking.
+    """
     import mgear.shifter.guide_manager as gui_mgr
 
-    result: Dict[str, Any] = {"build_type": build_type}
-
-    # Select guide(s) in Maya before building
     if guide_name:
         _select_guide(guide_name)
-    # No specific guide → build_from_selection() will build whatever is selected
-    # or all guides if the function supports it
 
-    # build_from_selection() — verified real mGear API (guide_manager.py:86-95)
+    # build_from_selection() — real mGear API (guide_manager.py:86-95)
+    # Takes 0 args; builds whatever is currently selected.
     built = gui_mgr.build_from_selection()
 
+    result: Dict[str, Any] = {}
     if isinstance(built, (list, tuple)):
         result["built_guides"] = [str(b) for b in built]
     elif built is not None:
@@ -46,22 +54,18 @@ def _build_rig(guide_name: Optional[str], build_type: str) -> Dict[str, Any]:
 
 def build_shifter_rig(
     guide_name: Optional[str] = None,
-    build_type: str = "full",
 ) -> Dict[str, Any]:
     """Build a rig from an existing Shifter guide in the scene.
 
     Args:
-        guide_name: Name of the guide to build from. If None, builds whatever is currently
-            selected in Maya (use maya.cmds.select() prior) or all available guides.
-        build_type: "full" for complete rig, "preview" for lightweight preview.
-    """
-    if build_type not in ("full", "preview"):
-        return skill_error(
-            "Invalid build_type '{}'".format(build_type),
-            "build_type must be 'full' or 'preview'",
-            prompt="Use build_type='full' for the complete rig, or 'preview' for a fast preview.",
-        )
+        guide_name: Name of the guide to build from.  If ``None``, builds
+            whatever guide(s) are currently selected in Maya.  Pre-select a
+            guide with ``maya.cmds.select()`` before calling without a name.
 
+    The underlying mGear ``build_from_selection()`` takes no arguments and
+    does not expose a preview/full mode — build type is determined by the
+    component's own configuration.
+    """
     try:
         try:
             import mgear.shifter  # noqa: F401
@@ -73,11 +77,11 @@ def build_shifter_rig(
                 mgear_available=False,
             )
 
-        result = _build_rig(guide_name, build_type)
+        result = _build_rig(guide_name)
 
         n_built = len(result.get("built_guides", []))
         return skill_success(
-            "Built {} guide(s) ({})".format(n_built, build_type),
+            "Built {} guide(s)".format(n_built),
             **result,
             prompt="Verify the generated rig in the viewport. Use export_shifter_guide_template to save as template.",
         )
