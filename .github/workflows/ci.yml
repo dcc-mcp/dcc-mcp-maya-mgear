@@ -180,9 +180,7 @@ jobs:
           from jsonschema import validate, ValidationError
 
           p = pathlib.Path("marketplace.json")
-          if not p.exists():
-              print("marketplace.json not found — skipping validation")
-              sys.exit(0)
+          assert p.exists(), "marketplace.json not found"
 
           with open(p) as f:
               data = json.load(f)
