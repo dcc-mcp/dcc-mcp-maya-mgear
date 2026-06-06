@@ -120,10 +120,64 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jsonschema
+        run: pip install jsonschema
+
       - name: Validate marketplace.json
         run: |
           python << 'PYEOF'
-          import json, pathlib, re, sys
+          import json, pathlib, sys
+
+          # -- schema: verbatim from dcc-mcp-core crates/dcc-mcp-catalog/src/lib.rs --
+          # MARKETPLACE_V1_SCHEMA_JSON — single source of truth for marketplace-v1.
+          # Any drift between this CI check and core's Rust-side loader is a bug.
+          SCHEMA = {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://dcc-mcp.github.io/schemas/marketplace-v1.schema.json",
+              "title": "DCC-MCP Marketplace Catalog",
+              "description": "Schema for marketplace.json catalog entries",
+              "type": "object",
+              "required": ["entries"],
+              "properties": {
+                  "version": {"type": "string"},
+                  "entries": {
+                      "type": "array",
+                      "items": {"$ref": "#/$defs/entry"}
+                  }
+              },
+              "additionalProperties": False,
+              "$defs": {
+                  "entry": {
+                      "type": "object",
+                      "required": ["name", "description"],
+                      "properties": {
+                          "name":        {"type": "string", "minLength": 1},
+                          "description": {"type": "string", "minLength": 1},
+                          "dcc":         {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+                          "url":         {"type": "string"},
+                          "tags":        {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+                          "version":          {"type": "string"},
+                          "min_core_version": {"type": "string"},
+                          "icon":             {"type": "string"},
+                          "maintainer":       {"type": "string"},
+                          "install": {
+                              "type": "object",
+                              "required": ["type"],
+                              "properties": {
+                                  "type":   {"type": "string", "enum": ["git", "zip", "path"]},
+                                  "url":    {"type": "string"},
+                                  "ref":    {"type": "string"},
+                                  "sha256": {"type": "string"}
+                              },
+                              "additionalProperties": False
+                          }
+                      },
+                      "additionalProperties": False
+                  }
+              }
+          }
+
+          from jsonschema import validate, ValidationError
 
           p = pathlib.Path("marketplace.json")
           assert p.exists(), "marketplace.json not found"
@@ -131,109 +185,27 @@ jobs:
           with open(p) as f:
               data = json.load(f)
 
+          try:
+              validate(instance=data, schema=SCHEMA)
+          except ValidationError as e:
+              print(f"marketplace.json validation FAILED: {e.message}")
+              print(f"  at: {'/'.join(str(p) for p in e.absolute_path)}")
+              if e.absolute_schema_path:
+                  print(f"  schema path: {'/'.join(str(p) for p in e.absolute_schema_path)}")
+              sys.exit(1)
+
+          # additional repo-level check: relative icon paths must exist on disk
           errors = []
-
-          # -- top-level schema --
-          if not isinstance(data, dict):
-              errors.append("Top-level must be a JSON object")
-              for e in errors:
-                  print(f"  - {e}")
-              sys.exit(1)
-
-          if "version" not in data:
-              errors.append("Missing top-level 'version' field")
-          elif data["version"] != "1":
-              errors.append(f"Unsupported schema version: {data['version']}")
-
-          entries = data.get("entries")
-          if not isinstance(entries, list) or len(entries) == 0:
-              errors.append("'entries' must be a non-empty array")
-              for e in errors:
-                  print(f"  - {e}")
-              sys.exit(1)
-
-          REQUIRED = ["name", "description", "dcc", "tags"]
-          VALID_INSTALL_TYPES = {"git"}
-
-          for i, entry in enumerate(entries):
-              prefix = f"entries[{i}]"
-
-              # required fields
-              for field in REQUIRED:
-                  if field not in entry or not entry[field]:
-                      errors.append(f"{prefix}: missing or empty '{field}'")
-
-              # name must be a valid package slug
-              name = entry.get("name", "")
-              if name and not re.match(r"^[a-z0-9][a-z0-9_.-]*[a-z0-9]$", name):
-                  errors.append(f"{prefix}: 'name' must be a valid slug: {name!r}")
-
-              # dcc must be a non-empty list of strings
-              dcc = entry.get("dcc")
-              if isinstance(dcc, list) and len(dcc) > 0:
-                  if not all(isinstance(d, str) and d for d in dcc):
-                      errors.append(f"{prefix}: 'dcc' must be a list of non-empty strings")
-              else:
-                  errors.append(f"{prefix}: 'dcc' must be a non-empty array")
-
-              # tags must be a non-empty list
-              tags = entry.get("tags")
-              if isinstance(tags, list) and len(tags) > 0:
-                  if not all(isinstance(t, str) and t for t in tags):
-                      errors.append(f"{prefix}: 'tags' must be a list of non-empty strings")
-              else:
-                  errors.append(f"{prefix}: 'tags' must be a non-empty array")
-
-              # version inside entry should be semver-like
-              ver = entry.get("version", "")
-              if ver and not re.match(r"^\d+\.\d+\.\d+", ver):
-                  errors.append(f"{prefix}: 'version' should be semver-like: {ver!r}")
-
-              # install block validation
-              inst = entry.get("install")
-              if inst is not None:
-                  if not isinstance(inst, dict):
-                      errors.append(f"{prefix}: 'install' must be an object")
-                  else:
-                      itype = inst.get("type", "")
-                      if not itype:
-                          errors.append(f"{prefix}: install.type is required")
-                      elif itype not in VALID_INSTALL_TYPES:
-                          errors.append(f"{prefix}: install.type must be one of {sorted(VALID_INSTALL_TYPES)}")
-
-                      iurl = inst.get("url", "")
-                      if not iurl:
-                          errors.append(f"{prefix}: install.url is required")
-                      elif not iurl.startswith("https://"):
-                          errors.append(f"{prefix}: install.url must be an HTTPS URL")
-
-                      iref = inst.get("ref", "")
-                      if not iref:
-                          errors.append(f"{prefix}: install.ref is required")
-                      elif itype == "git" and re.search(r"[<>|;]", iref):
-                          errors.append(f"{prefix}: install.ref contains unsafe characters: {iref!r}")
-
-              # icon field validation
+          for i, entry in enumerate(data.get("entries", [])):
               icon = entry.get("icon")
-              if icon is not None:
-                  if not isinstance(icon, str):
-                      errors.append(f"{prefix}: 'icon' must be a string")
-                  else:
-                      if icon.startswith("https://"):
-                          # absolute URL — just check basic URL shape
-                          if not icon.startswith("https://"):
-                              errors.append(f"{prefix}: icon URL must use HTTPS: {icon!r}")
-                      else:
-                          # relative path — must exist in repo
-                          icon_path = pathlib.Path(icon)
-                          if not icon_path.exists():
-                              errors.append(f"{prefix}: icon file not found: {icon!r}")
-
+              if icon and isinstance(icon, str) and not icon.startswith("https://"):
+                  if not pathlib.Path(icon).exists():
+                      errors.append(f"entries[{i}].icon: file not found: {icon!r}")
           if errors:
-              print("marketplace.json validation FAILED:")
+              print("icon file check FAILED:")
               for e in errors:
                   print(f"  - {e}")
               sys.exit(1)
 
-          print(f"marketplace.json OK ({len(entries)} entries)")
+          print(f"marketplace.json OK ({len(data.get('entries', []))} entries)")
           PYEOF
