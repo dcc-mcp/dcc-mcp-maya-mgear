@@ -7,6 +7,7 @@ metadata:
     group: maya.job.pipeline
     default_icon: rigging
     affinity: main
+    marketplace: dcc-mcp-maya-mgear
     depends:
       - maya-rigging
     execution: sync
@@ -21,4 +22,7 @@ metadata:
     contact:
       name: dcc-mcp team
       url: https://github.com/dcc-mcp/dcc-mcp-maya-mgear
+    install:
+      cli: "dcc-mcp marketplace install dcc-mcp-maya-mgear"
+      add_source: "dcc-mcp marketplace add dcc-mcp/dcc-mcp-maya-mgear"
 ---
