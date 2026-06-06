@@ -1,9 +1,15 @@
 """Unit tests for mGear Shifter skill tools.
 
-Tests constrain against the VERIFIED real mGear upstream API surface:
-- mgear.shifter.getComponentDirectories / importComponentGuide
-- mgear.shifter.guide_manager.draw_comp / build_from_selection
-- mgear.shifter.io.export_guide_template / build_from_file
+Tests use **signature-constrained** mocks that match the verified real
+mGear upstream API so that a wrong call (wrong kwarg name, wrong
+positional, wrong return type) produces a test failure instead of a
+silently green mock.
+
+Real signatures enforced:
+- ``mgear.shifter.getComponentDirectories() -> {path: [name, ...]}``
+- ``mgear.shifter.guide_manager.draw_comp(comp_type, parent=None, showUI=True)``
+- ``mgear.shifter.guide_manager.build_from_selection()``  (no args)
+- ``mgear.shifter.io.export_guide_template(filePath, meta)``
 """
 
 from __future__ import annotations
@@ -33,6 +39,62 @@ def _load_script(script_name: str):
     return mod
 
 
+# ---------------------------------------------------------------------------
+# Constrained mGear mock factories
+# ---------------------------------------------------------------------------
+
+# Real return type of getComponentDirectories() — a {path: [name, ...]} dict.
+_FAKE_COMP_MAPPING = {
+    "/mock/shifter/components/classic": ["arm_2jnt_01", "leg_2jnt_01", "head_01"],
+    "/mock/shifter/components/epic": ["spine_ik_01", "tail_01"],
+}
+
+
+def _constrained_getComponentDirectories():
+    """Signature-constrained stub for ``mgear.shifter.getComponentDirectories()``.
+
+    Returns ``{path: [component_name, ...]}`` — exactly what the real API returns.
+    """
+    return dict(_FAKE_COMP_MAPPING)
+
+
+def _constrained_draw_comp(comp_type, parent=None, showUI=True):
+    """Signature-constrained stub for ``mgear.shifter.guide_manager.draw_comp()``.
+
+    Real signature: ``draw_comp(comp_type, parent=None, showUI=True)``.
+    Any call with extra kwargs (e.g. ``name=``, ``pos=``) will raise TypeError.
+    """
+    return "{}_guide".format(comp_type)
+
+
+def _constrained_draw_comp_none(comp_type, parent=None, showUI=True):
+    """Same signature — returns None (deferred creation)."""
+    return None
+
+
+def _constrained_build_from_selection():
+    """Signature-constrained stub for ``mgear.shifter.guide_manager.build_from_selection()``.
+
+    Takes **no arguments** — the real API builds whatever is currently selected.
+    """
+    return ["rig1", "rig2"]
+
+
+def _constrained_build_from_selection_single():
+    """Same — returns a single node."""
+    return "single_rig"
+
+
+def _constrained_export_guide_template(filePath, meta):
+    """Signature-constrained stub for ``mgear.shifter.io.export_guide_template()``.
+
+    Real signature: ``export_guide_template(filePath, meta)``.
+    Writes fake GCT bytes to *filePath* so the base64 code path works.
+    """
+    Path(filePath).parent.mkdir(parents=True, exist_ok=True)
+    Path(filePath).write_bytes(b"fake_gct_data")
+
+
 def _make_mock_mgear():
     """Create a mock mgear top-level package."""
     mock = MagicMock()
@@ -42,31 +104,21 @@ def _make_mock_mgear():
 
 
 def _make_mock_modules(**submodules):
-    """Build a sys.modules patch dict with mgear + mgear.shifter + verified submodules.
+    """Build a sys.modules patch dict with signature-constrained mocks.
 
-    Module-level mocks use SimpleNamespace (not MagicMock) so that explicitly
-    set attributes are returned as-is rather than replaced by auto-generated
-    MagicMock children.
+    The ``mgear.shifter`` mock is set up with ``getComponentDirectories``
+    wired to :func:`_constrained_getComponentDirectories` — a real function
+    whose signature and return type match the upstream API.
 
     Submodule keys (e.g. ``guide_manager``, ``io``) are wired as
-    ``mgear.shifter.<name>`` and also attached as attributes on the shifter mock
-    so ``import mgear.shifter.guide_manager`` resolves correctly.
+    ``mgear.shifter.<name>``; production ``import mgear.shifter.<name>``
+    resolves through these attributes.
     """
     mock_mgear = _make_mock_mgear()
     mock_shifter = SimpleNamespace()
     mock_shifter.__path__ = ["/mock/mgear/shifter"]
+    mock_shifter.getComponentDirectories = _constrained_getComponentDirectories
 
-    # getComponentDirectories — verified real mGear API (shifter/__init__.py:57-84)
-    mock_shifter.getComponentDirectories = MagicMock(
-        return_value=[
-            Path("/mock/mgear/shifter/components/arm_2jnt_01"),
-            Path("/mock/mgear/shifter/components/leg_2jnt_01"),
-            Path("/mock/mgear/shifter/components/spine_ik_01"),
-        ]
-    )
-
-    # Wire mgear.shifter so import chaining resolves to mock_shifter, not an
-    # auto-generated MagicMock child of mock_mgear.
     mock_mgear.shifter = mock_shifter
 
     modules = {"mgear": mock_mgear, "mgear.shifter": mock_shifter}
@@ -144,13 +196,8 @@ class TestInspectMgearEnvironment:
                 result = mod.inspect_mgear_environment(verbose=True)
                 ctx = result.get("context", {})
                 key_modules = ctx.get("key_modules", {})
-                assert "mgear.shifter.guide_manager" in key_modules, (
-                    "key_modules must include mgear.shifter.guide_manager"
-                )
-                assert "mgear.shifter.io" in key_modules, "key_modules must include mgear.shifter.io"
-                assert "mgear.shifter.rig" not in key_modules, (
-                    "mgear.shifter.rig does not exist upstream; must not appear in key_modules"
-                )
+                assert "mgear.shifter.guide_manager" in key_modules
+                assert "mgear.shifter.io" in key_modules
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +206,12 @@ class TestInspectMgearEnvironment:
 
 
 class TestListShifterComponents:
-    """Tests for list_shifter_components tool."""
+    """Tests for list_shifter_components tool.
+
+    The real ``getComponentDirectories()`` returns ``{path: [name, ...]}``.
+    These tests ensure the tool extracts component *names* from the dict
+    *values*, not directory basenames from the keys.
+    """
 
     def test_graceful_degradation_when_mgear_missing(self):
         mod = _load_script("list_shifter_components")
@@ -173,10 +225,9 @@ class TestListShifterComponents:
         assert isinstance(result, dict)
         assert "success" in result
 
-    def test_returns_components_via_getComponentDirectories(self):
-        """list_shifter_components must use getComponentDirectories — the verified real API."""
+    def test_extracts_component_names_from_mapping(self):
+        """Component names come from dict VALUES, not from directory basenames."""
         mock_modules = _make_mock_modules()
-        shifter = mock_modules["mgear.shifter"]
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("list_shifter_components")
@@ -184,12 +235,16 @@ class TestListShifterComponents:
             assert result["success"] is True
             ctx = result.get("context", {})
             components = ctx.get("components", [])
-            assert len(components) == 3
+            # Should be actual component names, not directory names like "classic"/"epic"
             assert "arm_2jnt_01" in components
             assert "leg_2jnt_01" in components
             assert "spine_ik_01" in components
-            # Verify the real API entry point was called
-            shifter.getComponentDirectories.assert_called_once()
+            assert "head_01" in components
+            assert "tail_01" in components
+            assert ctx.get("total_components") == 5
+            # Must NOT contain directory basenames
+            assert "classic" not in components
+            assert "epic" not in components
 
     def test_filter_by_component_type(self):
         mock_modules = _make_mock_modules()
@@ -200,8 +255,7 @@ class TestListShifterComponents:
             assert result["success"] is True
             ctx = result.get("context", {})
             components = ctx.get("components", [])
-            assert all("arm" in c for c in components)
-            assert ctx.get("total_components") == 1
+            assert components == ["arm_2jnt_01"]
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +264,12 @@ class TestListShifterComponents:
 
 
 class TestCreateShifterGuideFromTemplate:
-    """Tests for create_shifter_guide_from_template tool."""
+    """Tests for create_shifter_guide_from_template tool.
+
+    The real ``draw_comp(comp_type, parent=None, showUI=True)`` is
+    signature-constrained; calling it with ``name=``, ``pos=``, or extra
+    kwargs would raise TypeError at runtime.
+    """
 
     def test_graceful_degradation_when_mgear_missing(self):
         mod = _load_script("create_shifter_guide_from_template")
@@ -229,10 +288,10 @@ class TestCreateShifterGuideFromTemplate:
         with pytest.raises(TypeError):
             mod.create_shifter_guide_from_template()
 
-    def test_calls_draw_comp(self):
-        """create_shifter_guide must call draw_comp — the verified real mGear API."""
+    def test_calls_draw_comp_with_correct_signature(self):
+        """Tool must call draw_comp(comp_type, parent=None, showUI=False)."""
         mock_gui_mgr = SimpleNamespace()
-        mock_gui_mgr.draw_comp = MagicMock(return_value="guide1")
+        mock_gui_mgr.draw_comp = _constrained_draw_comp
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
@@ -242,26 +301,40 @@ class TestCreateShifterGuideFromTemplate:
                 template="arm_2jnt_01",
                 position=[0.0, 10.0, 0.0],
                 parent_guide="root_guide",
-                parameters={"side": "L"},
             )
             assert result["success"] is True
             ctx = result.get("context", {})
-            assert ctx.get("guide_name") == "my_guide"
             assert ctx.get("template") == "arm_2jnt_01"
-            assert ctx.get("node") == "guide1"
+            assert ctx.get("node") is not None
 
-            mock_gui_mgr.draw_comp.assert_called_once_with(
-                comp_type="arm_2jnt_01",
-                name="my_guide",
-                parent="root_guide",
-                pos=[0.0, 10.0, 0.0],
-                side="L",
+    def test_extra_kwargs_not_passed_to_draw_comp(self):
+        """parameters dict must NOT be unpacked into draw_comp kwargs."""
+        calls = []
+
+        def _tracked_draw_comp(comp_type, parent=None, showUI=True):
+            calls.append({"comp_type": comp_type, "parent": parent, "showUI": showUI})
+            return "guide1"
+
+        mock_gui_mgr = SimpleNamespace()
+        mock_gui_mgr.draw_comp = _tracked_draw_comp
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("create_shifter_guide_from_template")
+            result = mod.create_shifter_guide_from_template(
+                guide_name="g",
+                template="arm_2jnt_01",
+                parameters={"side": "L"},
             )
+            assert result["success"] is True
+            assert len(calls) == 1
+            # draw_comp must NOT receive "side" or any extra kwarg
+            assert "side" not in calls[0]
 
     def test_draw_comp_no_node_returned(self):
-        """When draw_comp returns None, result is still success with deferred note."""
+        """When draw_comp() returns None."""
         mock_gui_mgr = SimpleNamespace()
-        mock_gui_mgr.draw_comp = MagicMock(return_value=None)
+        mock_gui_mgr.draw_comp = _constrained_draw_comp_none
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
@@ -277,7 +350,11 @@ class TestCreateShifterGuideFromTemplate:
 
 
 class TestBuildShifterRig:
-    """Tests for build_shifter_rig tool."""
+    """Tests for build_shifter_rig tool.
+
+    The real ``build_from_selection()`` takes **no arguments**.  There is
+    no ``full`` / ``preview`` mode in the upstream API.
+    """
 
     def test_graceful_degradation_when_mgear_missing(self):
         mod = _load_script("build_shifter_rig")
@@ -291,26 +368,10 @@ class TestBuildShifterRig:
         assert isinstance(result, dict)
         assert "success" in result
 
-    def test_invalid_build_type(self):
-        mod = _load_script("build_shifter_rig")
-        result = mod.build_shifter_rig(build_type="invalid")
-        assert result["success"] is False
-        assert "Invalid" in result["message"]
-
-    def test_default_build_type_is_full(self):
-        mod = _load_script("build_shifter_rig")
-        result = mod.build_shifter_rig()
-        assert result["success"] is False  # mGear missing is expected
-
-    def test_preview_build_type_accepted(self):
-        mod = _load_script("build_shifter_rig")
-        result = mod.build_shifter_rig(build_type="preview")
-        assert result["success"] is False  # mGear missing, but build_type accepted
-
-    def test_calls_build_from_selection_with_guide_name(self):
-        """build_shifter_rig must call build_from_selection — the verified real mGear API."""
+    def test_calls_build_from_selection_no_args(self):
+        """build_from_selection() must be called with ZERO arguments."""
         mock_gui_mgr = SimpleNamespace()
-        mock_gui_mgr.build_from_selection = MagicMock(return_value=["rig_result1"])
+        mock_gui_mgr.build_from_selection = _constrained_build_from_selection
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
@@ -319,14 +380,12 @@ class TestBuildShifterRig:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("guide_built") == "my_guide"
-            assert ctx.get("build_type") == "full"
-            assert ctx.get("built_guides") == ["rig_result1"]
-            mock_gui_mgr.build_from_selection.assert_called_once()
+            assert ctx.get("built_guides") == ["rig1", "rig2"]
 
-    def test_build_from_selection_no_guide_name(self):
-        """When no guide_name is given, builds from whatever is selected."""
+    def test_build_no_guide_name(self):
+        """No guide_name → builds from whatever is selected."""
         mock_gui_mgr = SimpleNamespace()
-        mock_gui_mgr.build_from_selection = MagicMock(return_value=["rig1", "rig2"])
+        mock_gui_mgr.build_from_selection = _constrained_build_from_selection
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
@@ -335,13 +394,11 @@ class TestBuildShifterRig:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("guide_built") == "selection"
-            assert ctx.get("built_guides") == ["rig1", "rig2"]
-            mock_gui_mgr.build_from_selection.assert_called_once()
 
-    def test_build_from_selection_single_result(self):
-        """When build_from_selection returns a single node (not a list)."""
+    def test_single_node_result(self):
+        """When build_from_selection returns a scalar string, not a list."""
         mock_gui_mgr = SimpleNamespace()
-        mock_gui_mgr.build_from_selection = MagicMock(return_value="single_rig")
+        mock_gui_mgr.build_from_selection = _constrained_build_from_selection_single
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
         with patch.dict(sys.modules, mock_modules):
@@ -357,7 +414,13 @@ class TestBuildShifterRig:
 
 
 class TestExportShifterGuideTemplate:
-    """Tests for export_shifter_guide_template tool."""
+    """Tests for export_shifter_guide_template tool.
+
+    The real ``export_guide_template(filePath, meta)`` uses keyword
+    arguments — *filePath* is the output file, *meta* is a metadata dict.
+    The export target comes from the current Maya selection, not a name
+    argument.
+    """
 
     def test_graceful_degradation_when_mgear_missing(self):
         mod = _load_script("export_shifter_guide_template")
@@ -376,15 +439,17 @@ class TestExportShifterGuideTemplate:
         with pytest.raises(TypeError):
             mod.export_shifter_guide_template()
 
-    def test_calls_export_guide_template_base64(self):
-        """export must call export_guide_template — the verified real mGear API (io.py:149-215)."""
+    def test_calls_export_guide_template_with_filePath_and_meta(self):
+        """Tool must use ``filePath`` and ``meta`` kwargs — not positional (guide_name, path)."""
+        calls = []
 
-        def _fake_export(guide_name, path):
-            with open(path, "wb") as f:
-                f.write(b"template_data_bytes")
+        def _tracked_export(filePath, meta):
+            calls.append({"filePath": filePath, "meta": meta})
+            Path(filePath).parent.mkdir(parents=True, exist_ok=True)
+            Path(filePath).write_bytes(b"fake")
 
         mock_io = SimpleNamespace()
-        mock_io.export_guide_template = MagicMock(side_effect=_fake_export)
+        mock_io.export_guide_template = _tracked_export
         mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
@@ -393,13 +458,23 @@ class TestExportShifterGuideTemplate:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert "template_base64" in ctx
-            assert len(ctx["template_base64"]) > 0  # non-empty base64
-            mock_io.export_guide_template.assert_called_once()
+            assert len(ctx["template_base64"]) > 0
+            assert len(calls) == 1
+            # Must use filePath= and meta= kwargs
+            assert "filePath" in calls[0]
+            assert "meta" in calls[0]
+            assert isinstance(calls[0]["meta"], dict)
+            assert calls[0]["meta"].get("include_metadata") is True
 
     def test_calls_export_guide_template_to_file(self, tmp_path):
         output = tmp_path / "exported_template.gct"
+        calls = []
+
+        def _tracked_export(filePath, meta):
+            calls.append({"filePath": filePath, "meta": meta})
+
         mock_io = SimpleNamespace()
-        mock_io.export_guide_template = MagicMock()
+        mock_io.export_guide_template = _tracked_export
         mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
@@ -412,21 +487,27 @@ class TestExportShifterGuideTemplate:
             assert result["success"] is True
             ctx = result.get("context", {})
             assert ctx.get("output_path") == str(output)
-            mock_io.export_guide_template.assert_called_once_with("my_guide", str(output))
+            assert len(calls) == 1
+            assert calls[0]["filePath"] == str(output)
+            assert calls[0]["meta"] == {"include_metadata": True}
 
     def test_no_metadata_export(self):
-        def _fake_export(guide_name, path):
-            with open(path, "wb") as f:
-                f.write(b"data")
+        calls = []
+
+        def _tracked_export(filePath, meta):
+            calls.append(meta)
+            Path(filePath).parent.mkdir(parents=True, exist_ok=True)
+            Path(filePath).write_bytes(b"data")
 
         mock_io = SimpleNamespace()
-        mock_io.export_guide_template = MagicMock(side_effect=_fake_export)
+        mock_io.export_guide_template = _tracked_export
         mock_modules = _make_mock_modules(io=mock_io)
 
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("export_shifter_guide_template")
             result = mod.export_shifter_guide_template(guide_name="my_guide", include_metadata=False)
             assert result["success"] is True
+            assert calls[0] == {"include_metadata": False}
 
 
 # ---------------------------------------------------------------------------

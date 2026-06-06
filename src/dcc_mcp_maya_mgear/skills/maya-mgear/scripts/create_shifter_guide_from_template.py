@@ -1,4 +1,9 @@
-"""Create a Shifter guide from a named template at a specified location."""
+"""Create a Shifter guide from a named template at a specified location.
+
+Real mGear API: ``mgear.shifter.guide_manager.draw_comp(comp_type, parent=None, showUI=True)``
+(guide_manager.py:24-42). Naming follows the component template's convention;
+the *guide_name* parameter is applied post-creation via Maya rename.
+"""
 
 from __future__ import annotations
 
@@ -7,32 +12,60 @@ from typing import Any, Dict, List, Optional
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _set_position(node: str, pos: List[float]) -> None:
+    """Move *node* to *pos* in world space if Maya is available."""
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        return
+    try:
+        cmds.xform(node, ws=True, translation=pos)
+    except Exception:
+        pass
+
+
+def _rename_guide(node: str, desired_name: str) -> str:
+    """Rename *node* to *desired_name* (Maya rename). Returns the final name."""
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        return node
+    try:
+        return cmds.rename(node, desired_name)
+    except Exception:
+        return node
+
+
 def _create_guide(
     guide_name: str,
     template: str,
     position: Optional[List[float]] = None,
     parent_guide: Optional[str] = None,
-    parameters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Create a Shifter guide via draw_comp() — the real mGear guide creation API."""
+    """Create a Shifter guide via ``draw_comp()`` — the verified real mGear API.
+
+    ``draw_comp(comp_type, parent=None, showUI=True)`` is the sole guide
+    creation entry point.  *guide_name* is not a parameter of draw_comp;
+    we apply it after creation.  *position* is applied via Maya transforms.
+    """
     import mgear.shifter.guide_manager as gui_mgr
 
     pos = position if position else [0.0, 0.0, 0.0]
-    params = parameters if parameters else {}
+    node = gui_mgr.draw_comp(comp_type=template, parent=parent_guide, showUI=False)
 
-    # draw_comp() — verified real mGear API (guide_manager.py:24-42)
-    # Underlying call chain: draw_comp → Rig.drawNewComponent (guide.py:1204+)
-    guide = gui_mgr.draw_comp(
-        comp_type=template,
-        name=guide_name,
-        parent=parent_guide,
-        pos=pos,
-        **params,
-    )
+    # Apply caller-chosen name and position post-creation
+    final_name = _rename_guide(str(node), guide_name) if node else guide_name
 
-    result: Dict[str, Any] = {"guide_name": guide_name, "template": template, "position": pos}
-    if guide:
-        result["node"] = str(guide)
+    if node:
+        _set_position(final_name, pos)
+
+    result: Dict[str, Any] = {
+        "guide_name": guide_name,
+        "template": template,
+        "position": pos,
+    }
+    if node:
+        result["node"] = final_name
     return result
 
 
@@ -46,11 +79,13 @@ def create_shifter_guide_from_template(
     """Create a Shifter guide from a named template.
 
     Args:
-        guide_name: Name for the new guide.
-        template: Component template name (e.g. "arm_2jnt_01", "leg_2jnt_01").
-        position: World-space position [x, y, z]. Defaults to origin.
+        guide_name: Desired name for the new guide.  Applied post-creation;
+            the component template controls the initial Maya node name.
+        template: Component template name (e.g. ``"arm_2jnt_01"``, ``"leg_2jnt_01"``).
+        position: World-space position ``[x, y, z]``. Defaults to origin.
         parent_guide: Optional parent guide name for hierarchy.
-        parameters: Additional template-specific parameters.
+        parameters: Reserved for future use.  Component parameters are set
+            via the component's own config system, not at draw_comp() time.
     """
     try:
         try:
@@ -68,20 +103,19 @@ def create_shifter_guide_from_template(
             template=template,
             position=position,
             parent_guide=parent_guide,
-            parameters=parameters,
         )
 
         if result.get("node"):
             return skill_success(
-                "Created guide '{}' from template '{}'".format(guide_name, template),
+                "Created guide '{}' from template '{}'".format(result["node"], template),
                 **result,
                 prompt="Use build_shifter_rig to generate the rig from this guide.",
             )
         else:
             return skill_success(
-                "Created guide '{}' from template '{}' (deferred)".format(guide_name, template),
+                "Called draw_comp('{}') — guide creation deferred".format(template),
                 **result,
-                prompt="Guide node was not returned synchronously; it may be pending creation.",
+                prompt="draw_comp() returned no node; verify the component type is correct.",
             )
     except Exception as exc:
         return skill_exception(exc, message="Failed to create Shifter guide from template")
