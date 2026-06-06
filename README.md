@@ -10,23 +10,25 @@ interact with Shifter components, and build rigs programmatically.
 
 ## Marketplace
 
-This package is registered in the [DCC-MCP Marketplace](https://github.com/dcc-mcp/dcc-mcp-core). You can install it via the CLI or discover it in the Admin UI.
+This package is registered in the [DCC-MCP Marketplace](https://github.com/dcc-mcp/dcc-mcp-core) with a `marketplace.json` manifest. It is not yet included in the default marketplace source — you need to add this repository as a custom source first.
 
-### CLI Installation
+### CLI Setup
 
-```bash
-dcc-mcp marketplace install dcc-mcp-maya-mgear
-```
-
-Or add this repository as a source:
+Add this repository as a marketplace source:
 
 ```bash
 dcc-mcp marketplace add dcc-mcp/dcc-mcp-maya-mgear
 ```
 
+Then install via:
+
+```bash
+dcc-mcp marketplace install dcc-mcp-maya-mgear
+```
+
 ### Admin UI
 
-In the DCC-MCP Admin UI, navigate to **Marketplace** and search for `maya-mgear` or `mgear` to find this package. The icon and description help identify it in the store.
+In the DCC-MCP Admin UI, navigate to **Marketplace** → **Manage Sources** and add this repo by its GitHub slug (`dcc-mcp/dcc-mcp-maya-mgear`). After adding the source, search for `maya-mgear` or `mgear` to find this package. The icon and description help identify it in the store.
 
 ## Prerequisites
 
