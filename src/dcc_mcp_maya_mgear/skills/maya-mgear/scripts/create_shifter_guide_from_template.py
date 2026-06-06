@@ -14,48 +14,26 @@ def _create_guide(
     parent_guide: Optional[str] = None,
     parameters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Create a Shifter guide using the mGear API."""
-    import mgear.shifter.guide as guide_mod
+    """Create a Shifter guide via draw_comp() — the real mGear guide creation API."""
+    import mgear.shifter.guide_manager as gui_mgr
 
     pos = position if position else [0.0, 0.0, 0.0]
+    params = parameters if parameters else {}
 
-    # Preferred: GuideManager.createGuideFromTemplate
-    manager_class = getattr(guide_mod, "GuideManager", None)
-    if manager_class is not None:
-        manager = manager_class()
-        if hasattr(manager, "createGuide"):
-            guide = manager.createGuide(
-                guideName=guide_name,
-                template=template,
-                position=pos,
-                parent=parent_guide,
-                **parameters if parameters else {},
-            )
-            result = {"guide_name": guide_name, "template": template, "position": pos}
-            if guide:
-                result["node"] = str(guide)
-            return result
+    # draw_comp() — verified real mGear API (guide_manager.py:24-42)
+    # Underlying call chain: draw_comp → Rig.drawNewComponent (guide.py:1204+)
+    guide = gui_mgr.draw_comp(
+        comp_type=template,
+        name=guide_name,
+        parent=parent_guide,
+        pos=pos,
+        **params,
+    )
 
-    # Fallback: direct module-level function
-    if hasattr(guide_mod, "createGuideFromTemplate"):
-        guide = guide_mod.createGuideFromTemplate(
-            guideName=guide_name,
-            templateName=template,
-            pos=pos,
-            parent=parent_guide,
-            **parameters if parameters else {},
-        )
-        result = {"guide_name": guide_name, "template": template, "position": pos}
-        if guide:
-            result["node"] = str(guide)
-        return result
-
-    # Fallback: legacy API
-    if hasattr(guide_mod, "addGuide"):
-        guide = guide_mod.addGuide(name=guide_name, template=template, pos=pos)
-        return {"guide_name": guide_name, "template": template, "position": pos, "node": str(guide) if guide else None}
-
-    return {"guide_name": guide_name, "template": template, "position": pos, "node": None}
+    result: Dict[str, Any] = {"guide_name": guide_name, "template": template, "position": pos}
+    if guide:
+        result["node"] = str(guide)
+    return result
 
 
 def create_shifter_guide_from_template(
@@ -69,7 +47,7 @@ def create_shifter_guide_from_template(
 
     Args:
         guide_name: Name for the new guide.
-        template: Component template name (e.g. "spine", "arm", "leg").
+        template: Component template name (e.g. "arm_2jnt_01", "leg_2jnt_01").
         position: World-space position [x, y, z]. Defaults to origin.
         parent_guide: Optional parent guide name for hierarchy.
         parameters: Additional template-specific parameters.
@@ -93,11 +71,18 @@ def create_shifter_guide_from_template(
             parameters=parameters,
         )
 
-        return skill_success(
-            "Created guide '{}' from template '{}'".format(guide_name, template),
-            **result,
-            prompt="Use build_shifter_rig to generate the rig from this guide.",
-        )
+        if result.get("node"):
+            return skill_success(
+                "Created guide '{}' from template '{}'".format(guide_name, template),
+                **result,
+                prompt="Use build_shifter_rig to generate the rig from this guide.",
+            )
+        else:
+            return skill_success(
+                "Created guide '{}' from template '{}' (deferred)".format(guide_name, template),
+                **result,
+                prompt="Guide node was not returned synchronously; it may be pending creation.",
+            )
     except Exception as exc:
         return skill_exception(exc, message="Failed to create Shifter guide from template")
 

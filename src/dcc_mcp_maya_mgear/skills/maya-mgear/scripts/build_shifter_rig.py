@@ -7,54 +7,40 @@ from typing import Any, Dict, Optional
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
+def _select_guide(guide_name: str) -> bool:
+    """Select a guide node in Maya by name. Returns True if selection succeeded."""
+    try:
+        import maya.cmds as cmds
+
+        cmds.select(guide_name, replace=True)
+        return True
+    except Exception:
+        return False
+
+
 def _build_rig(guide_name: Optional[str], build_type: str) -> Dict[str, Any]:
-    """Build a rig using the mGear Shifter API."""
-    import mgear.shifter.rig as rig_mod
+    """Build a rig using the real mGear Shifter API."""
+    import mgear.shifter.guide_manager as gui_mgr
 
-    result: Dict[str, Any] = {"build_type": build_type, "built_guides": []}
+    result: Dict[str, Any] = {"build_type": build_type}
 
-    # Preferred: Rigger class
-    rigger_class = getattr(rig_mod, "Rigger", None)
-    if rigger_class is not None:
-        rigger = rigger_class()
-        if build_type == "preview":
-            if hasattr(rigger, "buildPreview"):
-                built = rigger.buildPreview(guide_name) if guide_name else rigger.buildPreviewAll()
-                result["built_guides"] = [str(b) for b in built] if built else []
-            elif hasattr(rigger, "build"):
-                built = rigger.build(guide_name, mode="preview") if guide_name else rigger.buildAll(mode="preview")
-                result["built_guides"] = [str(b) for b in built] if built else []
-            else:
-                built = rigger.build(guide_name) if guide_name else rigger.buildAll()
-                result["built_guides"] = [str(b) for b in built] if built else []
-        else:
-            if hasattr(rigger, "build"):
-                built = rigger.build(guide_name) if guide_name else rigger.buildAll()
-                result["built_guides"] = [str(b) for b in built] if built else []
-            elif hasattr(rigger, "buildFull"):
-                built = rigger.buildFull(guide_name) if guide_name else rigger.buildFullAll()
-                result["built_guides"] = [str(b) for b in built] if built else []
-
-        result["guide_built"] = guide_name or "all"
-        return result
-
-    # Fallback: module-level function
+    # Select guide(s) in Maya before building
     if guide_name:
-        if hasattr(rig_mod, "buildRig"):
-            built = rig_mod.buildRig(guide_name, mode=build_type)
-            result["built_guides"] = [str(built)] if built else []
-        elif hasattr(rig_mod, "build"):
-            built = rig_mod.build(guide_name)
-            result["built_guides"] = [str(built)] if built else []
-    else:
-        if hasattr(rig_mod, "buildAllRigs"):
-            built = rig_mod.buildAllRigs(mode=build_type)
-            result["built_guides"] = [str(b) for b in built] if built else []
-        elif hasattr(rig_mod, "buildAll"):
-            built = rig_mod.buildAll()
-            result["built_guides"] = [str(b) for b in built] if built else []
+        _select_guide(guide_name)
+    # No specific guide → build_from_selection() will build whatever is selected
+    # or all guides if the function supports it
 
-    result["guide_built"] = guide_name or "all"
+    # build_from_selection() — verified real mGear API (guide_manager.py:86-95)
+    built = gui_mgr.build_from_selection()
+
+    if isinstance(built, (list, tuple)):
+        result["built_guides"] = [str(b) for b in built]
+    elif built is not None:
+        result["built_guides"] = [str(built)]
+    else:
+        result["built_guides"] = []
+
+    result["guide_built"] = guide_name or "selection"
     return result
 
 
@@ -65,7 +51,8 @@ def build_shifter_rig(
     """Build a rig from an existing Shifter guide in the scene.
 
     Args:
-        guide_name: Name of the guide to build from. Builds all guides if not specified.
+        guide_name: Name of the guide to build from. If None, builds whatever is currently
+            selected in Maya (use maya.cmds.select() prior) or all available guides.
         build_type: "full" for complete rig, "preview" for lightweight preview.
     """
     if build_type not in ("full", "preview"):
