@@ -1,10 +1,32 @@
 # dcc-mcp-maya-mgear
 
-mGear Shifter deep integration skills for [dcc-mcp-maya](https://github.com/dcc-mcp/dcc-mcp-maya).
+[![Marketplace](https://img.shields.io/badge/dcc--mcp-marketplace-orange)](https://github.com/dcc-mcp/dcc-mcp-maya-mgear)
+
+mGear Shifter rigging integration for [DCC-MCP](https://github.com/dcc-mcp/dcc-mcp-core).
 
 This repository provides a set of MCP skills that wrap mGear's Shifter
 API into typed, callable tools for Maya — enabling LLM-based agents to inspect mGear environments,
 interact with Shifter components, and build rigs programmatically.
+
+## Marketplace
+
+This package is registered in the [DCC-MCP Marketplace](https://github.com/dcc-mcp/dcc-mcp-core). You can install it via the CLI or discover it in the Admin UI.
+
+### CLI Installation
+
+```bash
+dcc-mcp marketplace install dcc-mcp-maya-mgear
+```
+
+Or add this repository as a source:
+
+```bash
+dcc-mcp marketplace add dcc-mcp/dcc-mcp-maya-mgear
+```
+
+### Admin UI
+
+In the DCC-MCP Admin UI, navigate to **Marketplace** and search for `maya-mgear` or `mgear` to find this package. The icon and description help identify it in the store.
 
 ## Prerequisites
 
