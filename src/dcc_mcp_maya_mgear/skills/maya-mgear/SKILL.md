@@ -7,6 +7,8 @@ default_icon: rigging
 affinity: main
 depends:
   - maya-rigging
+tools: tools.yaml
+groups: groups.yaml
 execution: sync
 permissions:
   - maya

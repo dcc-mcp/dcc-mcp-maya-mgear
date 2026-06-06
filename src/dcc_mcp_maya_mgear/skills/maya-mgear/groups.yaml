@@ -1,0 +1,10 @@
+groups:
+- name: mgear
+  description: mGear Shifter integration tools for guide creation, rig building, and component management.
+  default_active: false
+  tools:
+  - inspect_mgear_environment
+  - list_shifter_components
+  - create_shifter_guide_from_template
+  - build_shifter_rig
+  - export_shifter_guide_template
