@@ -34,7 +34,13 @@ def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
     import mgear.shifter.guide_manager as gui_mgr
 
     if guide_name:
-        _select_guide(guide_name)
+        ok = _select_guide(guide_name)
+        if not ok:
+            return {
+                "built_guides": [],
+                "guide_built": guide_name,
+                "error": "Guide '{}' not found in the scene".format(guide_name),
+            }
 
     # build_from_selection() — real mGear API (guide_manager.py:86-95)
     # Takes 0 args; builds whatever is currently selected.
@@ -78,6 +84,13 @@ def build_shifter_rig(
             )
 
         result = _build_rig(guide_name)
+
+        if result.get("error"):
+            return skill_error(
+                result["error"],
+                "Guide '{}' not found".format(result.get("guide_built", "unknown")),
+                prompt="Verify the guide name. Use list_shifter_components to see available guides.",
+            )
 
         n_built = len(result.get("built_guides", []))
         return skill_success(

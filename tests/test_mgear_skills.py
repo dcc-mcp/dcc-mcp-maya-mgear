@@ -113,6 +113,10 @@ def _make_mock_modules(**submodules):
     Submodule keys (e.g. ``guide_manager``, ``io``) are wired as
     ``mgear.shifter.<name>``; production ``import mgear.shifter.<name>``
     resolves through these attributes.
+
+    Also pre-registers ``maya`` / ``maya.cmds`` with a working ``select``
+    so that ``_select_guide`` succeeds by default.  Tests that need a
+    "guide not found" scenario can override ``maya.cmds.select`` to raise.
     """
     mock_mgear = _make_mock_mgear()
     mock_shifter = SimpleNamespace()
@@ -121,7 +125,18 @@ def _make_mock_modules(**submodules):
 
     mock_mgear.shifter = mock_shifter
 
-    modules = {"mgear": mock_mgear, "mgear.shifter": mock_shifter}
+    mock_maya_cmds = MagicMock()
+    mock_maya_cmds.select = MagicMock(return_value=None)  # succeeds by default
+
+    mock_maya = MagicMock()
+    mock_maya.cmds = mock_maya_cmds
+
+    modules = {
+        "mgear": mock_mgear,
+        "mgear.shifter": mock_shifter,
+        "maya": mock_maya,
+        "maya.cmds": mock_maya_cmds,
+    }
     for name, mock in submodules.items():
         full_name = "mgear.shifter.{}".format(name)
         modules[full_name] = mock
@@ -257,6 +272,47 @@ class TestListShifterComponents:
             components = ctx.get("components", [])
             assert components == ["arm_2jnt_01"]
 
+    def test_guide_detection_uses_isGearGuide_and_ismodel(self):
+        """Contract: uses official isGearGuide / ismodel attrs, NOT is_guide or name matching."""
+        mock_modules = _make_mock_modules()
+
+        mock_cmds = mock_modules["maya.cmds"]
+        mock_cmds.ls.return_value = [
+            "|guide_root",
+            "|guide_root|arm_C0_root",
+            "|some_random_transform",
+        ]
+
+        def fake_aq(attr, node=None, exists=False):
+            if "arm_C0" in node:
+                return attr in ("isGearGuide", "comp_type")
+            if "guide_root" in node:
+                return attr == "ismodel"
+            return False
+
+        mock_cmds.attributeQuery.side_effect = fake_aq
+
+        def fake_getattr(attr_path):
+            if "comp_type" in attr_path:
+                return "arm_2jnt_01"
+            return None
+
+        mock_cmds.getAttr.side_effect = fake_getattr
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("list_shifter_components")
+            result = mod.list_shifter_components(include_guides=True)
+            assert result["success"] is True
+            guides = result["context"]["guides"]
+            assert len(guides) == 2
+            flags_all = []
+            for g in guides:
+                flags_all.extend(g.get("flags", []))
+            assert "guide_element" in flags_all
+            assert "model_root" in flags_all
+            guide_names = [g["name"] for g in guides]
+            assert "some_random_transform" not in guide_names
+
 
 # ---------------------------------------------------------------------------
 # create_shifter_guide_from_template
@@ -332,7 +388,7 @@ class TestCreateShifterGuideFromTemplate:
             assert "side" not in calls[0]
 
     def test_draw_comp_no_node_returned(self):
-        """When draw_comp() returns None."""
+        """When draw_comp() returns None, must return skill_error — no fake success."""
         mock_gui_mgr = SimpleNamespace()
         mock_gui_mgr.draw_comp = _constrained_draw_comp_none
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
@@ -340,8 +396,9 @@ class TestCreateShifterGuideFromTemplate:
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("create_shifter_guide_from_template")
             result = mod.create_shifter_guide_from_template(guide_name="g", template="leg_2jnt_01")
-            assert result["success"] is True
+            assert result["success"] is False
             assert "node" not in result.get("context", {})
+            assert "Failed" in result["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +463,20 @@ class TestBuildShifterRig:
             result = mod.build_shifter_rig(guide_name="test")
             assert result["success"] is True
             assert result["context"]["built_guides"] == ["single_rig"]
+
+    def test_guide_not_found_returns_error(self):
+        """When guide_name does not exist, must return error — no silent fallback."""
+        mock_gui_mgr = SimpleNamespace()
+        mock_gui_mgr.build_from_selection = _constrained_build_from_selection
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+        # Simulate guide not found: select raises RuntimeError
+        mock_modules["maya.cmds"].select = MagicMock(side_effect=RuntimeError("not found"))
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("build_shifter_rig")
+            result = mod.build_shifter_rig(guide_name="nonexistent_guide")
+            assert result["success"] is False
+            assert "not found" in result["message"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +579,20 @@ class TestExportShifterGuideTemplate:
             result = mod.export_shifter_guide_template(guide_name="my_guide", include_metadata=False)
             assert result["success"] is True
             assert calls[0] == {"include_metadata": False}
+
+    def test_guide_not_found_returns_error(self):
+        """When guide_name does not exist, must return error — no silent fallback."""
+        mock_io = SimpleNamespace()
+        mock_io.export_guide_template = _constrained_export_guide_template
+        mock_modules = _make_mock_modules(io=mock_io)
+        # Simulate guide not found: cmds.select raises RuntimeError
+        mock_modules["maya.cmds"].select = MagicMock(side_effect=RuntimeError("not found"))
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("export_shifter_guide_template")
+            result = mod.export_shifter_guide_template(guide_name="nonexistent_guide")
+            assert result["success"] is False
+            assert "not found" in result["message"].lower()
 
 
 # ---------------------------------------------------------------------------

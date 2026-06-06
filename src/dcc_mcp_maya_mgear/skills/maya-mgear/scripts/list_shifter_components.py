@@ -25,7 +25,12 @@ def _get_component_list() -> List[str]:
 
 
 def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
-    """Query existing Shifter guides from the Maya scene."""
+    """Query existing Shifter guides using official ``isGearGuide`` / ``ismodel`` attrs.
+
+    Real mGear detection (guide_manager.py:35-40) uses ``node.hasAttr("isGearGuide")``
+    and ``node.hasAttr("ismodel")`` — NOT a generic ``is_guide`` attribute or name
+    heuristics.  We replicate the same logic via ``maya.cmds.attributeQuery``.
+    """
     if not include_guides:
         return []
 
@@ -39,28 +44,26 @@ def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
         all_transforms = cmds.ls(type="transform", long=True) or []
         for node in all_transforms:
             try:
-                if cmds.attributeQuery("is_guide", node=node, exists=True):
-                    guide_val = cmds.getAttr("{}.is_guide".format(node))
-                    if guide_val:
-                        guides.append(
-                            {
-                                "name": node.split("|")[-1],
-                                "full_path": node,
-                            }
-                        )
+                is_gear_guide = cmds.attributeQuery("isGearGuide", node=node, exists=True)
+                is_model = cmds.attributeQuery("ismodel", node=node, exists=True)
+                has_comp_type = cmds.attributeQuery("comp_type", node=node, exists=True)
+
+                if is_gear_guide or is_model:
+                    entry: Dict[str, Any] = {
+                        "name": node.split("|")[-1],
+                        "full_path": node,
+                        "flags": [],
+                    }
+                    if is_gear_guide:
+                        entry["flags"].append("guide_element")
+                    if is_model:
+                        entry["flags"].append("model_root")
+                    if has_comp_type:
+                        ctype = cmds.getAttr("{}.comp_type".format(node))
+                        entry["component_type"] = str(ctype)
+                    guides.append(entry)
             except Exception:  # noqa: PERF203
                 continue
-
-        if not guides:
-            for node in all_transforms:
-                if "guide" in node.lower() or "Guide" in node:
-                    guides.append(
-                        {
-                            "name": node.split("|")[-1],
-                            "full_path": node,
-                        }
-                    )
-
         return guides
     except Exception:
         return []

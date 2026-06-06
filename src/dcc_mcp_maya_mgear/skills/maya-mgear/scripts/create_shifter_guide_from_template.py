@@ -112,10 +112,13 @@ def create_shifter_guide_from_template(
                 prompt="Use build_shifter_rig to generate the rig from this guide.",
             )
         else:
-            return skill_success(
-                "Called draw_comp('{}') — guide creation deferred".format(template),
-                **result,
-                prompt="draw_comp() returned no node; verify the component type is correct.",
+            return skill_error(
+                "Failed to create guide '{}' — draw_comp() returned no node".format(guide_name),
+                "draw_comp('{}') returned None".format(template),
+                prompt="Verify the component type '{}' is valid. Use list_shifter_components to see available types.".format(
+                    template
+                ),
+                component_type=template,
             )
     except Exception as exc:
         return skill_exception(exc, message="Failed to create Shifter guide from template")
