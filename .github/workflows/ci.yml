@@ -78,17 +78,19 @@ jobs:
         run: pip install pyyaml
 
       - name: Validate SKILL.md
-        run: python -c "
+        run: |
+          python << 'PYEOF'
 import yaml, pathlib
 p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md')
 data = yaml.safe_load(p.read_text())
 assert data.get('name') == 'maya-mgear', 'Missing or wrong skill name'
 assert 'depends' in data, 'Missing depends'
 print('SKILL.md OK')
-"
+PYEOF
 
       - name: Validate tools.yaml
-        run: python -c "
+        run: |
+          python << 'PYEOF'
 import yaml, pathlib
 p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/tools.yaml')
 data = yaml.safe_load(p.read_text())
@@ -101,4 +103,4 @@ assert 'create_shifter_guide_from_template' in names
 assert 'build_shifter_rig' in names
 assert 'export_shifter_guide_template' in names
 print(f'All {len(tools)} tools validated OK: {names}')
-"
+PYEOF
