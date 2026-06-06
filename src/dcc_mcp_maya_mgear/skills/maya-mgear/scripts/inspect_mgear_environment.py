@@ -61,14 +61,15 @@ def _get_mgear_components() -> Dict[str, Any]:
     result["shifter_available"] = True
 
     try:
-        import mgear.shifter.component as comp  # noqa: PLC0415
+        import mgear.shifter as shifter  # noqa: PLC0415
 
-        guide_manager = getattr(comp, "guide_manager", None)
-        if guide_manager is not None and hasattr(guide_manager, "componentTypes"):
-            component_types = guide_manager.componentTypes
-            if isinstance(component_types, dict):
-                result["components_count"] = len(component_types)
-                result["component_types"] = sorted(component_types.keys())
+        # Use the real mGear API: getComponentDirectories()
+        dirs = shifter.getComponentDirectories()
+        all_types: set = set()
+        for base, types in dirs.items():
+            all_types.update(types)
+        result["components_count"] = len(all_types)
+        result["component_types"] = sorted(all_types)
     except Exception:  # noqa: BLE001
         pass
 

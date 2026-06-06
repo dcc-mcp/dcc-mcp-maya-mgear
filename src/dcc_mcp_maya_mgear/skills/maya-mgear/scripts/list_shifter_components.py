@@ -8,37 +8,50 @@ from dcc_mcp_core.skill import skill_entry, skill_error, skill_success
 
 
 def _get_component_types() -> Dict[str, Any]:
-    """Retrieve registered Shifter component types from mGear."""
+    """Retrieve registered Shifter component types from mGear's component directories.
+
+    Uses the real mGear API:
+    ``mgear.shifter.getComponentDirectories()`` → dict of dirs
+    ``mgear.shifter.importComponent(comp_type)`` → load component module for metadata
+    """
     result: Dict[str, Any] = {"count": 0, "types": [], "details": {}}
 
     try:
-        import mgear.shifter.component as comp  # noqa: PLC0415
+        import mgear.shifter as shifter  # noqa: PLC0415
     except ImportError:
         return result
 
-    guide_manager = getattr(comp, "guide_manager", None)
-    if guide_manager is None or not hasattr(guide_manager, "componentTypes"):
-        return result
+    try:
+        dirs = shifter.getComponentDirectories()
+        all_types: set = set()
+        for base, types in dirs.items():
+            all_types.update(types)
 
-    component_types = guide_manager.componentTypes
-    if not isinstance(component_types, dict):
-        return result
+        result["count"] = len(all_types)
+        result["types"] = sorted(all_types)
 
-    result["count"] = len(component_types)
-    result["types"] = sorted(component_types.keys())
-
-    # Collect per-component metadata
-    for name, ctype in component_types.items():
-        info: Dict[str, Any] = {"name": name}
-        if hasattr(ctype, "__doc__") and ctype.__doc__:
-            info["description"] = ctype.__doc__.strip().split("\n")[0]
-        result["details"][name] = info
+        # Collect per-component metadata by importing each component
+        for comp_type in sorted(all_types):
+            info: Dict[str, Any] = {"name": comp_type}
+            try:
+                comp_mod = shifter.importComponent(comp_type)
+                if comp_mod and hasattr(comp_mod, "__doc__") and comp_mod.__doc__:
+                    info["description"] = comp_mod.__doc__.strip().split("\n")[0]
+            except Exception:  # noqa: BLE001
+                pass
+            result["details"][comp_type] = info
+    except Exception:  # noqa: BLE001
+        pass
 
     return result
 
 
 def _get_scene_guides() -> List[Dict[str, Any]]:
-    """List existing Shifter guide objects in the current Maya scene."""
+    """List existing Shifter guide objects in the current Maya scene.
+
+    Detects guides by checking for real mGear guide attributes:
+    ``isGearGuide``, ``ismodel``, ``comp_type``.
+    """
     guides: List[Dict[str, Any]] = []
 
     try:
@@ -47,36 +60,38 @@ def _get_scene_guides() -> List[Dict[str, Any]]:
         return guides
 
     try:
-        # mGear guides typically carry a custom attribute or naming convention
-        # Search by known mGear guide attribute
         all_transforms = cmds.ls(type="transform", long=True) or []
 
         for node in all_transforms:
             short = node.split("|")[-1]
-            # mGear guide nodes typically have specific attributes
-            if cmds.attributeQuery("isGearGuide", node=node, exists=True):
-                attrs: Dict[str, Any] = {}
-                for attr_name in ("componentType", "mgearVersion", "guideName"):
+            attrs: Dict[str, Any] = {}
+
+            # Check for real mGear guide attributes
+            is_guide = False
+            for attr_name in ("isGearGuide", "ismodel", "comp_type"):
+                try:
+                    if cmds.attributeQuery(attr_name, node=node, exists=True):
+                        is_guide = True
+                        val = cmds.getAttr(f"{node}.{attr_name}")
+                        attrs[attr_name] = val
+                except Exception:  # noqa: BLE001
+                    pass
+
+            if is_guide:
+                # Collect additional metadata if available
+                for attr_name in ("mgearVersion", "guideName", "side", "mirror"):
                     try:
-                        if cmds.attributeQuery(attr_name, node=node, exists=True):
+                        if attr_name not in attrs and cmds.attributeQuery(attr_name, node=node, exists=True):
                             val = cmds.getAttr(f"{node}.{attr_name}")
                             attrs[attr_name] = val
                     except Exception:  # noqa: BLE001
                         pass
+
                 guides.append(
                     {
                         "name": short,
                         "full_path": node,
                         "attributes": attrs,
-                    }
-                )
-            # Also check by naming convention: *_guide or *_Guide
-            elif short.endswith("_guide") or short.endswith("_Guide"):
-                guides.append(
-                    {
-                        "name": short,
-                        "full_path": node,
-                        "attributes": {},
                     }
                 )
     except Exception:  # noqa: BLE001
@@ -89,11 +104,12 @@ def list_shifter_components(
     include_guides: bool = True,
     component_type: Optional[str] = None,
 ) -> dict:
-    """List available Shifter component types and guides in the current scene.
+    """List available Shifter component types and guides in the scene.
 
-    Enumerates registered mGear Shifter component classes and, when requested,
-    existing guide objects in the scene.  Both parts are optional — return what
-    is available and report clearly when mGear or Maya aren't loaded.
+    Enumerates registered mGear Shifter component types using
+    ``mgear.shifter.getComponentDirectories()`` and, when requested, existing
+    guide objects in the scene detected via ``isGearGuide`` / ``ismodel`` /
+    ``comp_type`` attributes.
 
     Args:
         include_guides: When True, include existing guides from the current scene.
@@ -118,10 +134,10 @@ def list_shifter_components(
                 available = comp_types.get("types", [])
                 return skill_error(
                     f"Unknown component type: '{component_type}'",
-                    f"'{component_type}' is not a registered Shifter component",
+                    f"'{component_type}' is not a registered Shifter component type",
                     prompt="Call without component_type to see all available types.",
                     possible_solutions=[
-                        f"Use one of: {', '.join(available)}" if available else "No component types registered",
+                        f"Use one of: {', '.join(available[:20])}" if available else "No component types registered",
                     ],
                     available_types=available,
                 )

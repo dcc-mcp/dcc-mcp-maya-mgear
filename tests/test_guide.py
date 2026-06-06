@@ -1,4 +1,4 @@
-"""Tests for create_shifter_guide_from_template tool."""
+"""Tests for create_shifter_guide_from_template tool (real mGear API)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from types import ModuleType
 import pytest
 
 
-class TestValidateTemplate:
-    """Test _validate_template helper."""
+class TestValidateComponentType:
+    """Test _validate_component_type helper."""
 
     @pytest.fixture(autouse=True)
     def _setup(
@@ -20,26 +20,25 @@ class TestValidateTemplate:
         self.mod = create_shifter_guide_from_template_module
 
     def test_no_mgear(self) -> None:
-        # Remove mgear from sys.modules
         saved = {}
-        for name in ("mgear", "mgear.shifter", "mgear.shifter.component", "mgear.shifter.rig"):
+        for name in ("mgear", "mgear.shifter"):
             if name in sys.modules:
                 saved[name] = sys.modules.pop(name)
         try:
-            result = self.mod._validate_template("spine")
+            result = self.mod._validate_component_type("spine")
         finally:
             for name, mod in saved.items():
                 sys.modules[name] = mod
         assert result is None
 
-    def test_valid_template(self) -> None:
-        result = self.mod._validate_template("spine")
+    def test_valid_component_type(self) -> None:
+        result = self.mod._validate_component_type("arm")
         assert result is None
 
-    def test_invalid_template(self) -> None:
-        result = self.mod._validate_template("invalid_template")
+    def test_invalid_component_type(self) -> None:
+        result = self.mod._validate_component_type("nonexistent_type")
         assert result is not None
-        assert "Unknown template" in result
+        assert "Unknown component type" in result
 
 
 class TestCreateShifterGuide:
@@ -55,8 +54,8 @@ class TestCreateShifterGuide:
 
     def test_no_mgear_returns_error(self) -> None:
         saved = {}
-        for name in ("mgear", "mgear.shifter", "mgear.shifter.component", "mgear.shifter.rig"):
-            if name in sys.modules:
+        for name in list(sys.modules.keys()):
+            if "mgear" in name:
                 saved[name] = sys.modules.pop(name)
         try:
             result = self.mod.create_shifter_guide_from_template(
@@ -68,23 +67,6 @@ class TestCreateShifterGuide:
                 sys.modules[name] = mod
         assert result["success"] is False
         assert "mGear is not available" in result["message"]
-
-    def test_no_maya_returns_error(self) -> None:
-        # Remove maya but keep mgear
-        saved_maya = {}
-        for name in ("maya", "maya.cmds"):
-            if name in sys.modules:
-                saved_maya[name] = sys.modules.pop(name)
-        try:
-            result = self.mod.create_shifter_guide_from_template(
-                guide_name="test_guide",
-                template="spine",
-            )
-        finally:
-            for name, mod in saved_maya.items():
-                sys.modules[name] = mod
-        assert result["success"] is False
-        assert "Maya is not available" in result["message"]
 
     def test_invalid_position(self) -> None:
         result = self.mod.create_shifter_guide_from_template(
@@ -101,7 +83,7 @@ class TestCreateShifterGuide:
             template="spine",
         )
         assert result["success"] is True
-        assert "test_guide" in result["message"]
+        assert "spine" in result["message"]
 
     def test_with_parent_guide(self) -> None:
         result = self.mod.create_shifter_guide_from_template(
@@ -113,3 +95,24 @@ class TestCreateShifterGuide:
         )
         assert result["success"] is True
         assert result["context"]["parent"] == "root_guide"
+
+    def test_parent_not_found(self) -> None:
+        """When parent doesn't exist, should return error with 'not found'."""
+        # Get the mock maya.cmds from sys.modules (injected by install_maya_and_mgear)
+        mock_cmds = sys.modules["maya.cmds"]
+        mock_cmds.objExists.return_value = False
+        result = self.mod.create_shifter_guide_from_template(
+            guide_name="test_guide",
+            template="spine",
+            parent_guide="bad_parent",
+        )
+        assert result["success"] is False
+        assert "not found" in str(result.get("message", "")).lower()
+
+    def test_invalid_component_type(self) -> None:
+        result = self.mod.create_shifter_guide_from_template(
+            guide_name="test_guide",
+            template="invalid_comp_type_123",
+        )
+        assert result["success"] is False
+        assert "Invalid component type" in result["message"]

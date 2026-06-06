@@ -118,7 +118,7 @@ class TestInspectEnvironmentWithMockMGear:
 
         with patch("importlib.util.find_spec", side_effect=_find_spec):
             result = self.mod.inspect_mgear_environment()
-        assert result["context"]["components_count"] == 5
+        assert result["context"]["components_count"] == 26  # mock has 26 known types
         assert "component_types" in result["context"]
         assert "spine" in result["context"]["component_types"]
 
@@ -163,4 +163,4 @@ class TestGetMGearComponents:
             result = self.mod._get_mgear_components()
         assert result["mgear_available"] is True
         assert result["shifter_available"] is True
-        assert result["components_count"] == 5
+        assert result["components_count"] == 26  # mock has 26 known types

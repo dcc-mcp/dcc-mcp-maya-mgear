@@ -1,95 +1,34 @@
-"""Create a Shifter guide from a named template at a specified location."""
+"""Create a Shifter guide from a named component type at a specified location."""
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from dcc_mcp_core.skill import skill_entry, skill_error, skill_success
+from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
-def _validate_template(template: str) -> Optional[str]:
-    """Check that *template* references a known Shifter component type.
+def _validate_component_type(comp_type: str) -> Optional[str]:
+    """Check that *comp_type* is a known Shifter component type.
 
     Returns None on success, or an error string.
     """
     try:
-        import mgear.shifter.component as comp  # noqa: PLC0415
+        import mgear.shifter as shifter  # noqa: PLC0415
     except ImportError:
         return None  # Let runtime handle — can't validate without mGear
 
-    guide_manager = getattr(comp, "guide_manager", None)
-    if guide_manager is None or not hasattr(guide_manager, "componentTypes"):
-        return None
+    try:
+        dirs = shifter.getComponentDirectories()
+        all_types: set = set()
+        for base, types in dirs.items():
+            all_types.update(types)
+        if comp_type not in all_types:
+            available = sorted(all_types)
+            return f"Unknown component type '{comp_type}'. Available types: {', '.join(available[:20])}{'...' if len(available) > 20 else ''}"
+    except Exception:  # noqa: BLE001
+        return None  # Non-fatal — let mGear report the error at draw time
 
-    component_types = guide_manager.componentTypes
-    if isinstance(component_types, dict) and template not in component_types:
-        available = sorted(component_types.keys())
-        return f"Unknown template '{template}'. Available: {', '.join(available)}"
     return None
-
-
-def _create_guide_via_mgear(
-    guide_name: str,
-    template: str,
-    position: List[float],
-    parent_guide: Optional[str] = None,
-    parameters: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Create a Shifter guide using mGear's native API.
-
-    This is called from within Maya where both maya.cmds and mgear are available.
-    """
-    import maya.cmds as cmds  # noqa: PLC0415
-    import mgear.shifter.component as comp  # noqa: PLC0415
-
-    guide_manager = getattr(comp, "guide_manager", None)
-    if guide_manager is None:
-        raise RuntimeError("mGear Shifter guide_manager is not available")
-
-    # Position validation
-    if len(position) != 3:
-        raise ValueError(f"position must be a list of 3 floats, got {position}")
-
-    # Resolve parent if specified
-    parent_node: Optional[str] = None
-    if parent_guide:
-        if not cmds.objExists(parent_guide):
-            raise ValueError(f"Parent guide '{parent_guide}' does not exist in the scene")
-        parent_node = parent_guide
-
-    # Create the guide using the mGear guide_manager
-    create_kwargs: Dict[str, Any] = {
-        "name": guide_name,
-        "componentType": template,
-    }
-    if parameters:
-        create_kwargs.update(parameters)
-
-    # Use the guide_manager's addGuide method
-    if hasattr(guide_manager, "addGuide"):
-        guide_node = guide_manager.addGuide(**create_kwargs)
-    elif hasattr(guide_manager, "createGuide"):
-        guide_node = guide_manager.createGuide(**create_kwargs)
-    else:
-        raise RuntimeError("Unable to create guide: guide_manager has no addGuide/createGuide method")
-
-    # Position the guide
-    if guide_node and cmds.objExists(guide_node):
-        cmds.setAttr(f"{guide_node}.translate", *position, type="double3")
-        if parent_node:
-            cmds.parent(guide_node, parent_node)
-
-    # If a single object was returned, wrap it
-    guide_nodes = guide_node if isinstance(guide_node, list) else [guide_node]
-
-    return {
-        "guide_name": guide_name,
-        "template": template,
-        "position": position,
-        "parent": parent_guide,
-        "created_nodes": guide_nodes,
-        "parameters": parameters or {},
-    }
 
 
 def create_shifter_guide_from_template(
@@ -99,21 +38,28 @@ def create_shifter_guide_from_template(
     parent_guide: Optional[str] = None,
     parameters: Optional[Dict[str, Any]] = None,
 ) -> dict:
-    """Create a Shifter guide from a named template at a specified location.
+    """Create a Shifter guide from a named component type at a specified location.
 
-    Uses mGear Shifter's component system to instantiate a rigging guide from a
-    template (e.g. "spine", "arm", "leg").  The guide serves as the blueprint for
-    the final rig built by ``build_shifter_rig``.
+    Uses mGear Shifter's ``draw_comp`` mechanism to instantiate a rigging guide
+    component (e.g. "arm", "leg", "spine") in the Maya scene.  The guide serves
+    as the blueprint for the final rig built by ``build_shifter_rig``.
 
     Args:
-        guide_name: Unique name for the new guide.
-        template: Component template name (e.g. "spine", "arm", "leg", "finger").
-        position: World-space ``[x, y, z]``. Defaults to origin ``[0, 0, 0]``.
-        parent_guide: Optional parent guide name for hierarchy organization.
-        parameters: Additional template-specific parameters as key-value pairs.
+        guide_name: Descriptive name for the new guide (stored as note/comment).
+        template: Component type name (e.g. "arm", "leg", "spine", "finger").
+        position: World-space ``[x, y, z]`` for the guide root. Defaults to origin.
+        parent_guide: Optional existing guide or transform to parent under.
+        parameters: Additional template-specific parameters passed through to
+            the component's ``drawNewComponent`` call.
 
     Returns:
         ToolResult dict with created guide info.
+
+    Note:
+        The mGear draw API does not accept a ``guide_name`` keyword — the name
+        is set by the component itself.  *parameters* are forwarded to the
+        component's settings UI (suppressed when running from MCP) so they
+        become the initial values for the guide.
     """
     pos = position or [0.0, 0.0, 0.0]
 
@@ -141,7 +87,7 @@ def create_shifter_guide_from_template(
 
     # Check Maya availability
     try:
-        import maya.cmds  # noqa: PLC0415, F401
+        import maya.cmds as cmds  # noqa: PLC0415, F401
     except ImportError:
         return skill_error(
             "Maya is not available",
@@ -149,38 +95,83 @@ def create_shifter_guide_from_template(
             prompt="This tool must run inside Maya's Python environment.",
         )
 
-    # Optional template validation (non-fatal — lets mGear report errors)
-    validation_error = _validate_template(template)
+    # Optional component type validation (non-fatal)
+    validation_error = _validate_component_type(template)
     if validation_error:
         return skill_error(
-            "Invalid template",
+            "Invalid component type",
             validation_error,
             prompt="Use list_shifter_components to see available component types.",
         )
 
     try:
-        result = _create_guide_via_mgear(
-            guide_name=guide_name,
-            template=template,
-            position=pos,
-            parent_guide=parent_guide,
-            parameters=parameters,
-        )
-        return skill_success(
-            f"Created Shifter guide '{guide_name}' from template '{template}'",
-            prompt="Use build_shifter_rig to build the rig from this guide.",
-            **result,
-        )
-    except Exception as exc:
-        from dcc_mcp_core.skill import skill_exception
+        # Resolve parent if specified
+        import mgear.pymaya as pm  # noqa: PLC0415
 
+        parent_node = None
+        if parent_guide:
+            if not cmds.objExists(parent_guide):
+                return skill_error(
+                    f"Parent not found: '{parent_guide}'",
+                    f"'{parent_guide}' does not exist in the scene",
+                    prompt="Specify an existing transform or guide node as parent.",
+                )
+            parent_node = pm.PyNode(parent_guide)
+
+        # Select the parent before drawing (mgear uses selection for placement)
+        if parent_node:
+            cmds.select(str(parent_node), replace=True)
+        else:
+            cmds.select(clear=True)
+
+        # Draw the component using the real mGear API
+        # mgear.shifter.guide_manager.draw_comp(comp_type, parent, showUI)
+        # showUI=False to suppress the settings dialog when called from MCP
+        import mgear.shifter.guide_manager as gm  # noqa: PLC0415
+
+        gm.draw_comp(template, parent=parent_node, showUI=False)
+
+        # Position the guide root if it was created at the origin
+        if pos != [0.0, 0.0, 0.0]:
+            selection_after = cmds.ls(selection=True, type="transform") or []
+            if selection_after:
+                guide_root = selection_after[-1]
+                cmds.setAttr(f"{guide_root}.translate", *pos, type="double3")
+
+        # Apply additional parameters if provided
+        if parameters:
+            selection_after = cmds.ls(selection=True, type="transform") or []
+            for sel in selection_after:
+                try:
+                    for key, val in parameters.items():
+                        attr_path = f"{sel}.{key}"
+                        if cmds.attributeQuery(key, node=sel, exists=True):
+                            cmds.setAttr(attr_path, val)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # Get the created guide info
+        selection_after = cmds.ls(selection=True, type="transform") or []
+        created_nodes = [str(s) for s in selection_after]
+
+        return skill_success(
+            f"Created Shifter guide component '{template}'",
+            prompt="Use build_shifter_rig to build the rig from this guide.",
+            template=template,
+            created_nodes=created_nodes,
+            position=pos,
+            parent=parent_guide,
+            parameters=parameters or {},
+        )
+
+    except Exception as exc:
         return skill_exception(
             exc,
-            message=f"Failed to create guide '{guide_name}'",
+            message=f"Failed to create guide component '{template}'",
             possible_solutions=[
-                "Check that the template name is correct",
+                f"Check that '{template}' is a valid component type",
                 "Verify the mGear Shifter plugin is loaded",
-                "Ensure no other guide has the same name",
+                "Ensure no other guide has a conflicting name",
             ],
         )
 

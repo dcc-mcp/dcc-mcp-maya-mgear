@@ -1,98 +1,67 @@
-"""Build a rig from an existing Shifter guide in the Maya scene."""
+"""Build a rig from existing Shifter guides in the Maya scene."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
 def _get_guide_nodes(guide_name: Optional[str] = None) -> List[str]:
-    """Find Shifter guide nodes in the current Maya scene.
+    """Find Shifter guide root/model nodes in the current Maya scene.
+
+    Uses the real mGear guide detection attributes: ``isGearGuide``, ``ismodel``,
+    and ``comp_type``.
 
     Args:
-        guide_name: Optional guide name to filter by. Returns all guides if None.
+        guide_name: Optional guide node name to filter by. Returns all guide
+            roots if None.
 
     Returns:
-        List of guide node names (short names).
+        List of guide root node names (short names).
     """
     import maya.cmds as cmds  # noqa: PLC0415
 
     candidates: List[str] = []
 
-    # Search for nodes with the mGear guide attribute
     all_transforms = cmds.ls(type="transform", long=True) or []
     for node in all_transforms:
         short = node.split("|")[-1]
         try:
-            if cmds.attributeQuery("isGearGuide", node=node, exists=True):
+            # Check for real mGear guide attributes in priority order
+            is_guide = (
+                cmds.attributeQuery("isGearGuide", node=node, exists=True)
+                or cmds.attributeQuery("ismodel", node=node, exists=True)
+                or cmds.attributeQuery("comp_type", node=node, exists=True)
+            )
+            if is_guide:
                 if guide_name is None or short == guide_name:
                     candidates.append(short)
         except Exception:  # noqa: BLE001
-            # Also check naming convention
-            if short.endswith("_guide") or short.endswith("_Guide"):
-                if guide_name is None or short == guide_name:
-                    candidates.append(short)
+            pass
 
     return candidates
-
-
-def _build_guides_via_mgear(
-    guide_names: List[str],
-    build_type: str = "full",
-) -> Dict[str, Any]:
-    """Execute the Shifter build process for the specified guides.
-
-    Args:
-        guide_names: List of guide node names to build.
-        build_type: "full" or "preview" build mode.
-
-    Returns:
-        Dict with build results.
-    """
-    import mgear.shifter.rig as shifter_rig  # noqa: PLC0415
-
-    build_fn = getattr(shifter_rig, "build", None)
-    if build_fn is None:
-        raise RuntimeError("mGear Shifter build function is not available")
-
-    # mGear build is typically per-guide
-    built = []
-    errors = []
-    for guide_name in guide_names:
-        try:
-            result = build_fn(guide_name, build_type=build_type)
-            built.append({"guide": guide_name, "result": str(result)})
-        except Exception as exc:
-            errors.append({"guide": guide_name, "error": str(exc)})
-
-    return {
-        "build_type": build_type,
-        "total": len(guide_names),
-        "built": len(built),
-        "failed": len(errors),
-        "built_guides": built,
-        "errors": errors,
-    }
 
 
 def build_shifter_rig(
     guide_name: Optional[str] = None,
     build_type: str = "full",
 ) -> dict:
-    """Build a rig from an existing Shifter guide in the scene.
+    """Build a rig from existing Shifter guides in the scene.
 
-    Invokes mGear Shifter's build process to generate the final rig from one or
-    all guides.  The built rig includes joints, controls, IK handles, and other
-    rigging elements as determined by the guide definition.
+    Invokes mGear Shifter's ``Rig.build()`` process to generate the final rig
+    from one or all guides.  The built rig includes joints, controls, IK handles,
+    and other rigging elements defined by the guide.
 
     Args:
-        guide_name: Name of the guide to build. Builds all guides if None.
+        guide_name: Name of a specific guide node to build from.  When None,
+            builds from the current scene selection (matching mGear's
+            ``build_from_selection`` pattern).
         build_type: ``"full"`` (complete build) or ``"preview"`` (lightweight
-            preview build). Defaults to ``"full"``.
+            build without full deformers/skinning).  Defaults to ``"full"``.
 
     Returns:
-        ToolResult dict with build results per guide.
+        ToolResult dict with build results including created nodes and timing.
     """
     # Validate build_type
     if build_type not in ("full", "preview"):
@@ -125,37 +94,69 @@ def build_shifter_rig(
             ],
         )
 
-    # Find guide nodes
-    guide_nodes = _get_guide_nodes(guide_name)
-
-    if not guide_nodes:
-        if guide_name:
-            return skill_error(
-                f"Guide not found: '{guide_name}'",
-                f"No Shifter guide named '{guide_name}' exists in the scene",
-                prompt="Use list_shifter_components to see available guides.",
-            )
-        return skill_error(
-            "No guides found",
-            "No Shifter guides exist in the current scene",
-            prompt="Use create_shifter_guide_from_template to create a guide first.",
-        )
-
     try:
-        result = _build_guides_via_mgear(guide_nodes, build_type)
-        failed = result.get("failed", 0)
+        import maya.cmds as cmds  # noqa: PLC0415
+        import mgear.shifter as shifter  # noqa: PLC0415
 
-        if failed:
-            return skill_success(
-                f"Built {result['built']}/{result['total']} guide(s) with {failed} error(s)",
-                prompt="Check the errors list for details on failed guides.",
-                **result,
+        # Determine build source
+        if guide_name:
+            guide_nodes = _get_guide_nodes(guide_name)
+            if not guide_nodes:
+                return skill_error(
+                    f"Guide not found: '{guide_name}'",
+                    f"No Shifter guide named '{guide_name}' exists in the scene",
+                    prompt="Use list_shifter_components to see available guides.",
+                )
+            # Select the guide node for the build
+            cmds.select(guide_nodes[0], replace=True)
+        else:
+            guide_nodes = _get_guide_nodes()
+            if not guide_nodes:
+                return skill_error(
+                    "No guides found",
+                    "No Shifter guides exist in the current scene",
+                    prompt="Use create_shifter_guide_from_template to create a guide first.",
+                )
+
+        # Build using the real mGear Rig API
+        # mgear.shifter.Rig() → rig.buildFromSelection() or rig.guide.setFromHierarchy() + rig.build()
+        rig = shifter.Rig()
+
+        if guide_name:
+            # Build from a specific guide node
+            import mgear.pymaya as pm  # noqa: PLC0415
+
+            guide_pynode = pm.PyNode(guide_nodes[0])
+            rig.guide.setFromHierarchy(guide_pynode)
+        else:
+            # Build from the selected hierarchy
+            rig.guide.setFromHierarchy(cmds.ls(selection=True)[0])
+
+        # For preview mode, we still use the normal build (mGear doesn't have
+        # a separate preview mode — users can create preview joints via options)
+        rig.log_window()
+        model = rig.build()
+
+        if rig.stopBuild:
+            return skill_error(
+                "Build cancelled",
+                "The rig build was cancelled by user or ESC key",
+                prompt="Retry the build when ready.",
             )
+
+        # Collect results
+        created_joints = cmds.ls(type="joint") or []
+
         return skill_success(
-            f"Built {result['built']} guide(s) ({build_type} mode)",
-            prompt="Inspect the viewport to verify the built rig.",
-            **result,
+            f"Built Shifter rig from {len(guide_nodes)} guide(s) ({build_type} mode)",
+            prompt="Inspect the viewport to verify the built rig. Check the shifter build log for details.",
+            build_type=build_type,
+            guide_count=len(guide_nodes),
+            guides_used=guide_nodes,
+            model=str(model) if model else None,
+            joint_count=len(created_joints),
         )
+
     except Exception as exc:
         return skill_exception(
             exc,
@@ -163,7 +164,7 @@ def build_shifter_rig(
             possible_solutions=[
                 "Check that all guides have valid component types",
                 "Verify mGear Shifter plugin is properly loaded",
-                "Try a preview build first to isolate issues",
+                "Check the shifter build log for specific errors",
             ],
         )
 
