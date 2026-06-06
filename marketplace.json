@@ -10,7 +10,7 @@
     "install": {
       "type": "git",
       "url": "https://github.com/dcc-mcp/dcc-mcp-maya-mgear",
-      "ref": "v0.1.0"
+      "ref": "main"
     }
   }]
 }
