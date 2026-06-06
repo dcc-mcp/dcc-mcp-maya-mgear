@@ -68,8 +68,6 @@ def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
                 for mod in (
                     "mgear.core",
                     "mgear.shifter",
-                    "mgear.shifter.component",
-                    "mgear.shifter.guide",
                     "mgear.shifter.guide_manager",
                     "mgear.shifter.io",
                     "mgear.anim_picker",

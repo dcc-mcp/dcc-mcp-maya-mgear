@@ -75,14 +75,7 @@ tools:
     properties:
       guide_name:
         type: string
-        description: Name of the guide to build from. Builds all guides if not specified.
-      build_type:
-        type: string
-        enum:
-        - full
-        - preview
-        default: full
-        description: Full build or preview mode.
+        description: Name of the guide to build from. Builds whatever is selected if not specified.
 
 - name: export_shifter_guide_template
   description: Export a Shifter guide or component as a reusable template file.

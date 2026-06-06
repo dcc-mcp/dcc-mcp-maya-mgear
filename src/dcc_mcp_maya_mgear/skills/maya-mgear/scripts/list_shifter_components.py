@@ -1,21 +1,27 @@
-"""List available Shifter component types and existing guides in the scene."""
+"""List available Shifter component types and existing guides in the scene.
+
+Real mGear API: ``mgear.shifter.getComponentDirectories()`` returns a
+``{path: [component_name, ...]}`` dict (shifter/__init__.py:57-72).
+The component NAMES are the dict *values*, not the keys' basenames.
+"""
 
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
 def _get_component_list() -> List[str]:
-    """Enumerate available Shifter component types via the real mGear API."""
+    """Enumerate component names from the real ``getComponentDirectories()`` dict."""
     import mgear.shifter
 
-    # getComponentDirectories() — verified real mGear API
-    # (release/scripts/mgear/shifter/__init__.py:57-84)
-    comp_dirs = mgear.shifter.getComponentDirectories()
-    return [os.path.basename(str(d)) for d in comp_dirs]
+    # Returns {path: [component_name, ...]} — verified real mGear API
+    mapping = mgear.shifter.getComponentDirectories()
+    names: List[str] = []
+    for component_list in mapping.values():
+        names.extend(str(c) for c in component_list)
+    return sorted(set(names))
 
 
 def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
