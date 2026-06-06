@@ -80,9 +80,13 @@ jobs:
         run: python -c "
 import yaml, pathlib
 p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md')
-data = yaml.safe_load(p.read_text())
+for doc in yaml.safe_load_all(p.read_text()):
+    if doc is not None:
+        data = doc
+        break
 assert data.get('name') == 'maya-mgear', 'Missing or wrong skill name'
-assert 'depends' in data, 'Missing depends'
+dcc_mcp = data.get('metadata', {}).get('dcc-mcp', {})
+assert 'depends' in dcc_mcp, 'Missing depends under metadata.dcc-mcp'
 print('SKILL.md OK')
 "
 
