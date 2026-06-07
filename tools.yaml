@@ -1,0 +1,99 @@
+tools:
+- name: inspect_mgear_environment
+  description: Read mGear availability, version, key modules, and basic environment diagnostics.
+  execution: sync
+  affinity: main
+  annotations:
+    read_only_hint: true
+    idempotent_hint: true
+  group: mgear
+  input_schema:
+    type: object
+    properties:
+      verbose:
+        type: boolean
+        default: false
+        description: Include detailed module paths and diagnostic info.
+
+- name: list_shifter_components
+  description: List available Shifter component types and guides in the current scene.
+  execution: sync
+  affinity: main
+  annotations:
+    read_only_hint: true
+    idempotent_hint: true
+  group: mgear
+  input_schema:
+    type: object
+    properties:
+      include_guides:
+        type: boolean
+        default: true
+        description: Include existing guides from the current scene.
+      component_type:
+        type: string
+        description: Filter by specific component type name.
+
+- name: create_shifter_guide_from_template
+  description: Create a Shifter guide from a named template at a specified location.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - guide_name
+    - template
+    properties:
+      guide_name:
+        type: string
+        description: Name for the new guide.
+      template:
+        type: string
+        description: Component template name (e.g. "spine", "arm", "leg").
+      position:
+        type: array
+        items:
+          type: number
+        minItems: 3
+        maxItems: 3
+        description: World-space position [x, y, z].
+      parent_guide:
+        type: string
+        description: Optional parent guide name for hierarchy.
+      parameters:
+        type: object
+        description: Additional template-specific parameters as key-value pairs.
+
+- name: build_shifter_rig
+  description: Build a rig from an existing Shifter guide in the scene.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    properties:
+      guide_name:
+        type: string
+        description: Name of the guide to build from. Builds whatever is selected if not specified.
+
+- name: export_shifter_guide_template
+  description: Export a Shifter guide or component as a reusable template file.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - guide_name
+    properties:
+      guide_name:
+        type: string
+        description: Name of the guide or component to export.
+      output_path:
+        type: string
+        description: File path for the exported template. Omit to return as base64.
+      include_metadata:
+        type: boolean
+        default: true
+        description: Include metadata and annotations in the export.
