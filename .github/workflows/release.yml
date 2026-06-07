@@ -71,3 +71,49 @@ jobs:
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: dcc-mcp-maya-mgear-${{ needs.release-please.outputs.tag_name }}.zip
+
+  sync-marketplace:
+    needs: [release-please, publish-release-assets]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update marketplace.json version
+        run: |
+          VERSION='${{ needs.release-please.outputs.version }}'
+          python3 -c "
+          import json
+          # Update root marketplace.json (this package's own registration)
+          with open('marketplace.json', 'r') as f:
+              data = json.load(f)
+          data['entries'][0]['version'] = '$VERSION'
+          with open('marketplace.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          # Duplicate copy under dcc-mcp-maya-mgear/
+          with open('dcc-mcp-maya-mgear/marketplace.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          # Update marketplace/marketplace.json (official marketplace catalog entry)
+          with open('marketplace/marketplace.json', 'r') as f:
+              catalog = json.load(f)
+          for skill in catalog['skills']:
+              if skill['name'] == 'dcc-mcp-maya-mgear':
+                  skill['version'] = '$VERSION'
+                  break
+          with open('marketplace/marketplace.json', 'w') as f:
+              json.dump(catalog, f, indent=2)
+              f.write('\n')
+          "
+
+      - name: Commit and push marketplace.json update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add marketplace.json dcc-mcp-maya-mgear/marketplace.json marketplace/marketplace.json
+          git commit -m "chore: sync marketplace.json version to ${{ needs.release-please.outputs.version }}" || echo "No changes to commit"
+          git push
