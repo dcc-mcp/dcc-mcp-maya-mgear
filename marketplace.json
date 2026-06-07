@@ -8,8 +8,9 @@
     "version": "0.2.0",
     "icon": "icon.png",
     "install": {
-      "type": "zip",
-      "url": "https://github.com/dcc-mcp/dcc-mcp-maya-mgear/archive/refs/tags/dcc-mcp-maya-mgear-v0.2.0.zip"
+      "type": "git",
+      "url": "https://github.com/loonghao/dcc-mcp-maya-mgear",
+      "ref": "main"
     }
   }]
 }
