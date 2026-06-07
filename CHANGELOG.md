@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.3.0...dcc-mcp-maya-mgear-v0.4.0) (2026-06-07)
+
+
+### Features
+
+* auto-sync marketplace.json version on release ([9f45f31](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/9f45f31528446cb05e79e8981aa3c2b8f94189e7))
+
+
+### Bug Fixes
+
+* address code review findings for PR [#18](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/18) ([82baac7](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/82baac718f3301d100d2baaf9bafc1a74924473e))
+
 ## [0.3.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.2.0...dcc-mcp-maya-mgear-v0.3.0) (2026-06-07)
 
 
