@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-SCRIPTS_ROOT = Path(__file__).parent.parent / "src" / "dcc_mcp_maya_mgear" / "skills" / "maya-mgear" / "scripts"
+SCRIPTS_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear" / "scripts"
 
 _COUNTER = [0]
 

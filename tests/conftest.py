@@ -10,3 +10,8 @@ from pathlib import Path
 _src = Path(__file__).parent.parent / "src"
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
+
+# Also ensure skill/ is on sys.path for direct script imports.
+_skill = Path(__file__).parent.parent / "skill"
+if str(_skill) not in sys.path:
+    sys.path.insert(0, str(_skill))
