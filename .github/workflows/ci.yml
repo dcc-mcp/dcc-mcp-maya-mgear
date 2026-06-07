@@ -77,37 +77,82 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
-      - name: Validate SKILL.md
+      - name: Validate SKILL.md files (root + nested)
         run: |
           python << 'PYEOF'
-          import yaml, pathlib
-          p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md')
-          for doc in yaml.safe_load_all(p.read_text()):
-              if doc is not None:
-                  data = doc
-                  break
-          assert data.get('name') == 'maya-mgear', 'Missing or wrong skill name'
-          dcc_mcp = data.get('metadata', {}).get('dcc-mcp', {})
-          assert 'depends' in dcc_mcp, 'Missing depends under metadata.dcc-mcp'
-          print('SKILL.md OK')
+          import yaml, pathlib, sys
+          SKILL_PATHS = [
+              'src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md',
+              'SKILL.md',
+          ]
+          for sp in SKILL_PATHS:
+              p = pathlib.Path(sp)
+              for doc in yaml.safe_load_all(p.read_text()):
+                  if doc is not None:
+                      data = doc
+                      break
+              assert data.get('name') == 'maya-mgear', f'{sp}: Missing or wrong skill name'
+              dcc_mcp = data.get('metadata', {}).get('dcc-mcp', {})
+              assert 'depends' in dcc_mcp, f'{sp}: Missing depends under metadata.dcc-mcp'
+              print(f'{sp} OK')
           PYEOF
 
-      - name: Validate tools.yaml
+      - name: Validate tools.yaml files (root + nested)
         run: |
           python << 'PYEOF'
-          import yaml, pathlib
-          p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/tools.yaml')
-          data = yaml.safe_load(p.read_text())
-          tools = data.get('tools', [])
-          assert len(tools) == 5, f'Expected 5 tools, got {len(tools)}'
-          names = [t['name'] for t in tools]
-          assert 'inspect_mgear_environment' in names
-          assert 'list_shifter_components' in names
-          assert 'create_shifter_guide_from_template' in names
-          assert 'build_shifter_rig' in names
-          assert 'export_shifter_guide_template' in names
-          print(f'All {len(tools)} tools validated OK: {names}')
+          import yaml, pathlib, sys
+          TOOLS_PATHS = [
+              'src/dcc_mcp_maya_mgear/skills/maya-mgear/tools.yaml',
+              'tools.yaml',
+          ]
+          for tp in TOOLS_PATHS:
+              p = pathlib.Path(tp)
+              data = yaml.safe_load(p.read_text())
+              tools = data.get('tools', [])
+              assert len(tools) == 5, f'{tp}: Expected 5 tools, got {len(tools)}'
+              names = [t['name'] for t in tools]
+              assert 'inspect_mgear_environment' in names
+              assert 'list_shifter_components' in names
+              assert 'create_shifter_guide_from_template' in names
+              assert 'build_shifter_rig' in names
+              assert 'export_shifter_guide_template' in names
+              print(f'{tp}: All {len(tools)} tools validated OK: {names}')
           PYEOF
+
+      - name: Detect drift — root vs nested copies
+        run: |
+          echo "## Drift detection: root-level vs nested skill files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          ROOT_SKILL="SKILL.md"
+          NESTED_SKILL="src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md"
+          ROOT_TOOLS="tools.yaml"
+          NESTED_TOOLS="src/dcc_mcp_maya_mgear/skills/maya-mgear/tools.yaml"
+
+          drift=0
+
+          # SKILL.md diff
+          if diff -u "$NESTED_SKILL" "$ROOT_SKILL"; then
+            echo "✅ SKILL.md: root matches nested copy" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ SKILL.md: DRIFT DETECTED — root and nested copies differ!" >> $GITHUB_STEP_SUMMARY
+            drift=1
+          fi
+
+          # tools.yaml diff
+          if diff -u "$NESTED_TOOLS" "$ROOT_TOOLS"; then
+            echo "✅ tools.yaml: root matches nested copy" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ tools.yaml: DRIFT DETECTED — root and nested copies differ!" >> $GITHUB_STEP_SUMMARY
+            drift=1
+          fi
+
+          if [ $drift -ne 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Action required" >> $GITHUB_STEP_SUMMARY
+            echo "Root-level SKILL.md / tools.yaml must stay in sync with the nested copies under src/. Update the root copies to match." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
   marketplace-lint:
     name: Lint Marketplace
