@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "dcc-mcp-maya-mgear"
 version = "0.2.0"
@@ -34,8 +30,6 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.8.0",
-    "hatchling",
-    "build",
     "pyyaml>=5.0",
 ]
 
@@ -43,9 +37,6 @@ dev = [
 Homepage = "https://github.com/dcc-mcp/dcc-mcp-maya-mgear"
 Repository = "https://github.com/dcc-mcp/dcc-mcp-maya-mgear"
 Issues = "https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/dcc_mcp_maya_mgear"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

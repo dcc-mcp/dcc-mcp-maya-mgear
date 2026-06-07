@@ -80,8 +80,6 @@ jobs:
               '.release-please-manifest.json',
               'CHANGELOG.md',
               'pyproject.toml',
-              'Cargo.toml',
-              'Cargo.lock',
               'version.py',
               '__init__.py',
             ];
