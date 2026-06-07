@@ -38,9 +38,9 @@ In the DCC-MCP Admin UI, navigate to **Marketplace** → **Manage Sources** and 
 
 ## Installation
 
-```bash
-pip install dcc-mcp-maya-mgear
-```
+This package is installed through the DCC-MCP Marketplace — there is no standalone `pip install`.
+Both CLI and Admin UI methods write to a shared `installed.json`, so state stays synchronized
+regardless of which method you use.
 
 ## Skills
 
