@@ -81,7 +81,7 @@ jobs:
         run: |
           python << 'PYEOF'
           import yaml, pathlib
-          p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/SKILL.md')
+          p = pathlib.Path('skill/maya-mgear/SKILL.md')
           for doc in yaml.safe_load_all(p.read_text()):
               if doc is not None:
                   data = doc
@@ -96,7 +96,7 @@ jobs:
         run: |
           python << 'PYEOF'
           import yaml, pathlib
-          p = pathlib.Path('src/dcc_mcp_maya_mgear/skills/maya-mgear/tools.yaml')
+          p = pathlib.Path('skill/maya-mgear/tools.yaml')
           data = yaml.safe_load(p.read_text())
           tools = data.get('tools', [])
           assert len(tools) == 5, f'Expected 5 tools, got {len(tools)}'
