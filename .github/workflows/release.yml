@@ -86,7 +86,7 @@ jobs:
         run: |
           VERSION='${{ needs.release-please.outputs.version }}'
           python3 -c "
-          import json
+          import json, os
           # Update root marketplace.json (this package's own registration)
           with open('marketplace.json', 'r') as f:
               data = json.load(f)
@@ -95,16 +95,21 @@ jobs:
               json.dump(data, f, indent=2)
               f.write('\n')
           # Duplicate copy under dcc-mcp-maya-mgear/
+          os.makedirs('dcc-mcp-maya-mgear', exist_ok=True)
           with open('dcc-mcp-maya-mgear/marketplace.json', 'w') as f:
               json.dump(data, f, indent=2)
               f.write('\n')
           # Update marketplace/marketplace.json (official marketplace catalog entry)
-          with open('marketplace/marketplace.json', 'r') as f:
-              catalog = json.load(f)
-          for skill in catalog['skills']:
-              if skill['name'] == 'dcc-mcp-maya-mgear':
-                  skill['version'] = '$VERSION'
-                  break
+          os.makedirs('marketplace', exist_ok=True)
+          if os.path.exists('marketplace/marketplace.json'):
+              with open('marketplace/marketplace.json', 'r') as f:
+                  catalog = json.load(f)
+              for skill in catalog['skills']:
+                  if skill['name'] == 'dcc-mcp-maya-mgear':
+                      skill['version'] = '$VERSION'
+                      break
+          else:
+              catalog = {'skills': [{'name': 'dcc-mcp-maya-mgear', 'version': '$VERSION'}]}
           with open('marketplace/marketplace.json', 'w') as f:
               json.dump(catalog, f, indent=2)
               f.write('\n')
