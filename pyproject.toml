@@ -1,6 +1,6 @@
 [project]
 name = "dcc-mcp-maya-mgear"
-version = "0.4.0"
+version = "0.4.1"
 description = "mGear Shifter deep integration skills for dcc-mcp-maya"
 authors = [{ name = "Long Hao", email = "hal.long@outlook.com" }]
 readme = "README.md"
