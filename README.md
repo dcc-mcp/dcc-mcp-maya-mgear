@@ -1,106 +1,64 @@
 # dcc-mcp-maya-mgear
 
 [![Marketplace](https://img.shields.io/badge/dcc--mcp-marketplace-orange)](https://github.com/dcc-mcp/marketplace)
+[![DCC](https://img.shields.io/badge/dcc-maya-blue)](https://github.com/dcc-mcp/dcc-mcp-maya)
 
-mGear Shifter rigging integration for [DCC-MCP](https://github.com/dcc-mcp/dcc-mcp-core).
+mGear Shifter rigging integration for the DCC-MCP ecosystem — inspect mGear
+environments, list Shifter components, create guides, build rigs, and export
+templates through typed MCP tools.
 
-This repository is a **standalone skill repo** distributed through the
-[DCC-MCP Marketplace](https://github.com/dcc-mcp/marketplace). It provides a
-set of MCP skills that wrap mGear's Shifter API into typed, callable tools for
-Maya — enabling LLM-based agents to inspect mGear environments, interact with
-Shifter components, and build rigs programmatically.
-
-## Installation
-
-Install via the DCC-MCP CLI marketplace:
+## Install
 
 ```bash
 dcc-mcp marketplace install dcc-mcp-maya-mgear --dcc maya
 ```
 
-No `pip install` — this is a marketplace-distributed skill repo. The CLI clones this repository to `~/.dcc-mcp/marketplace/maya/dcc-mcp-maya-mgear/` and registers the skill path with the running adapter.
+Installed to `~/.dcc-mcp/marketplace/maya/dcc-mcp-maya-mgear/`. After install,
+the skill is automatically registered with the running Maya adapter.
 
-### Admin UI
+## Skills
 
-In the DCC-MCP Admin UI, navigate to **Marketplace** and search for `maya-mgear` or `mgear`. After installing, the skill is automatically registered.
+| Skill | Tools | Description |
+|-------|-------|-------------|
+| `maya-mgear` | 5 | Inspect, list, create, build, and export mGear Shifter components |
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `inspect_mgear_environment` | Check mGear availability, version, and module diagnostics |
+| `list_shifter_components` | List Shifter component types and scene guides |
+| `create_shifter_guide_from_template` | Create a guide from a named template at a position |
+| `build_shifter_rig` | Build a rig from an existing Shifter guide |
+| `export_shifter_guide_template` | Export a guide or component as a reusable template |
 
 ## Prerequisites
 
 - Autodesk Maya 2022+
 - [dcc-mcp-maya](https://github.com/dcc-mcp/dcc-mcp-maya) installed and configured
-- mGear Shifter installed and accessible from Maya's Python environment
+- [mGear Shifter](https://github.com/mgear-dev/mgear) installed and accessible from Maya
 - dcc-mcp-core ≥ 0.18.2
 
-## Skills
+## Contributing
 
-| Skill | Description |
-|-------|-------------|
-| `maya-mgear` | Core mGear Shifter integration tools |
-
-## Usage
-
-In Claude Desktop (or any MCP client), load the skill and call tools:
-
-1. Load the skill: `load_skill("maya-mgear")`
-2. Use the tools: `inspect_mgear_environment()`, `list_shifter_components()`, etc.
-
-## Development
+This is a standalone skill repo. See [CONTRIBUTING.md](https://github.com/dcc-mcp/marketplace/blob/main/CONTRIBUTING.md) in the marketplace repo for how to propose changes.
 
 ```bash
+# Dev setup
 pip install -e ".[dev]"
-ruff check src/ tests/
-pytest tests/
+
+# Lint
+ruff check . && ruff format --check .
+
+# Test (68 tests, 5 tools, 3 OS × 5 Python on CI)
+pytest tests/ -v
 ```
 
-## Testing
+## Related
 
-Tests are located in `tests/` and use pytest with signature-constrained mocks
-that match the real mGear upstream API. The test suite validates all 5 MVP
-tools across multiple scenarios:
-
-- **Graceful degradation** — every tool returns a proper error result when
-  mGear is not installed (success=False, error populated, prompt with
-  actionable guidance).
-- **API contract** — mocks enforce real mGear function signatures; calling
-  `draw_comp()` with wrong kwarg names or `build_from_selection()` with
-  extra arguments causes a test failure.
-- **Partial availability** — tools handle broken sub-modules,
-  `RuntimeError` from upstream, and missing Maya commands safely.
-
-### Running tests
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage report
-pytest tests/ --cov --cov-report=term
-
-# Run a single test module
-pytest tests/test_mgear_skills.py -v
-```
-
-### Coverage
-
-Coverage is tracked across all source modules. The CI
-pipeline uploads `coverage.xml` to Codecov on every push and PR.
-Minimum expected coverage: ≥80% per module.
-
-### Linting
-
-```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-```
-
-## CI
-
-| Job | Matrix | Purpose |
-|-----|--------|---------|
-| Test | 3 OS × 5 Python versions | Unit tests + coverage |
-| Lint | ubuntu / 3.12 | Ruff check + format |
-| Skill Lint | ubuntu / 3.12 | Validate SKILL.md + tools.yaml |
-| Marketplace Lint | ubuntu / 3.12 | Validate marketplace.json |
+- [DCC-MCP Marketplace](https://github.com/dcc-mcp/marketplace) — skill catalog
+- [dcc-mcp-core](https://github.com/dcc-mcp/dcc-mcp-core) — runtime
+- [dcc-mcp-maya](https://github.com/dcc-mcp/dcc-mcp-maya) — Maya adapter
 
 ## License
 
