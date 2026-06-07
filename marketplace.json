@@ -9,7 +9,7 @@
     "icon": "icon.png",
     "install": {
       "type": "git",
-      "url": "https://github.com/loonghao/dcc-mcp-maya-mgear",
+      "url": "https://github.com/dcc-mcp/dcc-mcp-maya-mgear",
       "ref": "main"
     }
   }]
