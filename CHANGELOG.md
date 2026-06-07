@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.2.0...dcc-mcp-maya-mgear-v0.3.0) (2026-06-07)
+
+
+### Features
+
+* add marketplace-compatible layout at repo root ([b0c1b8c](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/b0c1b8c493a164a30441a60526db81736198be48))
+* update marketplace registration for Phase 2 CLI install/update/uninstall ([a50f37b](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/a50f37b88ae5e81a42cbd9d20666267a5af066ca))
+
 ## [0.2.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.1.0...dcc-mcp-maya-mgear-v0.2.0) (2026-06-06)
 
 
