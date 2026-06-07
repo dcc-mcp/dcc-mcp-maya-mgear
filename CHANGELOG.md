@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.0...dcc-mcp-maya-mgear-v0.4.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* create missing directories before writing marketplace.json copies ([59f565d](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/59f565d40488941da86d977eebd500346e86ad3b))
+
 ## [0.4.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.3.0...dcc-mcp-maya-mgear-v0.4.0) (2026-06-07)
 
 
