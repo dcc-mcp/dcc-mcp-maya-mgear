@@ -5,12 +5,11 @@
     "description": "mGear Shifter rigging integration for DCC-MCP",
     "dcc": ["maya"],
     "tags": ["skills", "maya", "rigging", "mgear"],
-    "version": "0.1.0",
+    "version": "0.2.0",
     "icon": "icon.png",
     "install": {
-      "type": "git",
-      "url": "https://github.com/dcc-mcp/dcc-mcp-maya-mgear",
-      "ref": "main"
+      "type": "zip",
+      "url": "https://github.com/dcc-mcp/dcc-mcp-maya-mgear/archive/refs/tags/dcc-mcp-maya-mgear-v0.2.0.zip"
     }
   }]
 }
