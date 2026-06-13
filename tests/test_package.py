@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 SCRIPTS_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear" / "scripts"
+PROJECT_ROOT = Path(__file__).parent.parent
 
 _COUNTER = [0]
 
@@ -63,6 +64,18 @@ class TestPackageImport:
             "export_shifter_guide_template",
         ):
             assert (SCRIPTS_ROOT / "{}.py".format(name)).is_file()
+
+    @pytest.mark.parametrize(
+        "depends_path",
+        (
+            PROJECT_ROOT / "metadata" / "depends.md",
+            PROJECT_ROOT / "skill" / "maya-mgear" / "metadata" / "depends.md",
+        ),
+    )
+    def test_depends_md_uses_loader_dependency_list_format(self, depends_path):
+        lines = depends_path.read_text(encoding="utf-8").splitlines()
+        dependencies = [line.strip().lstrip("-").strip() for line in lines if line.strip()]
+        assert dependencies == ["maya-rigging"]
 
 
 # ---------------------------------------------------------------------------
