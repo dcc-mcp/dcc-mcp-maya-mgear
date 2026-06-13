@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.1...dcc-mcp-maya-mgear-v0.4.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* normalize mgear dependency metadata ([af12b1f](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/af12b1f965657c5d49e3eab7b132d28b5dbfe794))
+
 ## [0.4.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.0...dcc-mcp-maya-mgear-v0.4.1) (2026-06-07)
 
 
