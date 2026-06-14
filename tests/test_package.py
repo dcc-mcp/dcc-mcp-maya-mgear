@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -108,12 +109,11 @@ class TestSkillMetadata:
 
     def test_skill_version_matches_pyproject(self):
         """SKILL.md version should align with pyproject.toml."""
-        import tomllib  # Python 3.11+
-
         pyproject = PROJECT_ROOT / "pyproject.toml"
-        with pyproject.open("rb") as f:
-            data = tomllib.load(f)
-        expected = "v{}".format(data["project"]["version"])
+        text = pyproject.read_text(encoding="utf-8")
+        m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        assert m is not None, "Could not find version in pyproject.toml"
+        expected = "v{}".format(m.group(1))
 
         skill_content = self.SKILL_MD.read_text(encoding="utf-8")
         assert "version: {}".format(expected) in skill_content, (
