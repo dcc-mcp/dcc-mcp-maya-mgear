@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.4](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.3...dcc-mcp-maya-mgear-v0.4.4) (2026-06-14)
+
+
+### Bug Fixes
+
+* allow SKILL.md in release PR file validation ([98f633a](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/98f633a444877fb73ccdb382f79a6be78cee1a93))
+* replace tomllib with re for cross-python version parsing ([ae4549c](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/ae4549c3bf6459247306b2c51933a042b7400718))
+* set dcc=maya, add version field, filter __init__.py from components ([c1a4150](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/c1a415035da1c8a7c888fb12c9052f1327d4137b))
+
 ## [0.4.3](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.2...dcc-mcp-maya-mgear-v0.4.3) (2026-06-14)
 
 
