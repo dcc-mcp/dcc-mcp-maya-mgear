@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -76,6 +77,59 @@ class TestPackageImport:
         lines = depends_path.read_text(encoding="utf-8").splitlines()
         dependencies = [line.strip().lstrip("-").strip() for line in lines if line.strip()]
         assert dependencies == ["maya-rigging"]
+
+
+# ---------------------------------------------------------------------------
+# SKILL.md metadata validation
+# ---------------------------------------------------------------------------
+
+
+class TestSkillMetadata:
+    """Verify SKILL.md frontmatter fields for DCC/version correctness."""
+
+    SKILL_MD = PROJECT_ROOT / "skill" / "maya-mgear" / "SKILL.md"
+    ROOT_SKILL_MD = PROJECT_ROOT / "SKILL.md"
+
+    def test_skill_dcc_is_maya(self):
+        content = self.SKILL_MD.read_text(encoding="utf-8")
+        assert "dcc: maya" in content, "SKILL.md must declare dcc: maya"
+
+    def test_skill_has_version(self):
+        content = self.SKILL_MD.read_text(encoding="utf-8")
+        assert "version:" in content, "SKILL.md must declare an explicit version field"
+
+    def test_root_skill_dcc_is_maya(self):
+        content = self.ROOT_SKILL_MD.read_text(encoding="utf-8")
+        assert "dcc: maya" in content, "root SKILL.md must declare dcc: maya"
+
+    def test_root_skill_has_version(self):
+        content = self.ROOT_SKILL_MD.read_text(encoding="utf-8")
+        assert "version:" in content, "root SKILL.md must declare an explicit version field"
+
+    def test_skill_version_matches_pyproject(self):
+        """SKILL.md version should align with pyproject.toml."""
+        import tomllib  # Python 3.11+
+
+        pyproject = PROJECT_ROOT / "pyproject.toml"
+        with pyproject.open("rb") as f:
+            data = tomllib.load(f)
+        expected = "v{}".format(data["project"]["version"])
+
+        skill_content = self.SKILL_MD.read_text(encoding="utf-8")
+        assert "version: {}".format(expected) in skill_content, (
+            "SKILL.md version must match pyproject.toml ({})".format(expected)
+        )
+
+    def test_skill_version_matches_release_please_manifest(self):
+        """SKILL.md version should align with .release-please-manifest.json."""
+        manifest = PROJECT_ROOT / ".release-please-manifest.json"
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        expected = "v{}".format(data["."])
+
+        skill_content = self.SKILL_MD.read_text(encoding="utf-8")
+        assert "version: {}".format(expected) in skill_content, (
+            "SKILL.md version must match .release-please-manifest.json ({})".format(expected)
+        )
 
 
 # ---------------------------------------------------------------------------

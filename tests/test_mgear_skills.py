@@ -272,6 +272,25 @@ class TestListShifterComponents:
             components = ctx.get("components", [])
             assert components == ["arm_2jnt_01"]
 
+    def test_filters_out_init_py(self):
+        """__init__.py must NOT appear in component names."""
+        mock_modules = _make_mock_modules()
+        mock_shifter = mock_modules["mgear.shifter"]
+        # Override mapping to include __init__.py entries
+        mock_shifter.getComponentDirectories = lambda: {
+            "/mock/shifter/components/classic": ["arm_2jnt_01", "__init__.py"],
+            "/mock/shifter/components/epic": ["__init__.py", "spine_ik_01"],
+        }
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("list_shifter_components")
+            result = mod.list_shifter_components(include_guides=False)
+            assert result["success"] is True
+            components = result["context"]["components"]
+            assert "arm_2jnt_01" in components
+            assert "spine_ik_01" in components
+            assert "__init__.py" not in components
+
     def test_guide_detection_uses_isGearGuide_and_ismodel(self):
         """Contract: uses official isGearGuide / ismodel attrs, NOT is_guide or name matching."""
         mock_modules = _make_mock_modules()
