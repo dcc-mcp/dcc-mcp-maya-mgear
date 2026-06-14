@@ -8,6 +8,7 @@ metadata:
     default_icon: rigging
     affinity: main
     marketplace: dcc-mcp-maya-mgear
+    tools: tools.yaml
     depends:
       - maya-rigging
     execution: sync
