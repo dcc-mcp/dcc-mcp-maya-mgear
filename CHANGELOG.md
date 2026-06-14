@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.2...dcc-mcp-maya-mgear-v0.4.3) (2026-06-14)
+
+
+### Bug Fixes
+
+* add tools.yaml reference to SKILL.md metadata ([2cb40b2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/2cb40b2286ba92904644c1839dd2daccc9c6ab0b))
+
 ## [0.4.2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.1...dcc-mcp-maya-mgear-v0.4.2) (2026-06-13)
 
 
