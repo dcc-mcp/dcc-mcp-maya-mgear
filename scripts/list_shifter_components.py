@@ -20,7 +20,7 @@ def _get_component_list() -> List[str]:
     mapping = mgear.shifter.getComponentDirectories()
     names: List[str] = []
     for component_list in mapping.values():
-        names.extend(str(c) for c in component_list)
+        names.extend(str(c) for c in component_list if not str(c).startswith("__"))
     return sorted(set(names))
 
 
