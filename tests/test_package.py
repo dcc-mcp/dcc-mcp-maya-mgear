@@ -14,12 +14,9 @@ import pytest
 import yaml
 
 SCRIPTS_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear" / "scripts"
-<<<<<<< HEAD
 PROJECT_ROOT = Path(__file__).parent.parent
-=======
 SKILL_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear"
 REPO_ROOT = Path(__file__).parent.parent
->>>>>>> fa19b5f (fix: resolve SKILL.md strict-loader rejection and create_shifter_guide_from_template reporting)
 
 _COUNTER = [0]
 
