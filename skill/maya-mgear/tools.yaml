@@ -50,7 +50,7 @@ tools:
         description: Name for the new guide.
       template:
         type: string
-        description: Component template name (e.g. "spine", "arm", "leg").
+        description: Component template name (e.g. "arm_2jnt_01", "leg_2jnt_01"). Use list_shifter_components to see available types.
       position:
         type: array
         items:

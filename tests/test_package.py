@@ -11,9 +11,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 SCRIPTS_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear" / "scripts"
+<<<<<<< HEAD
 PROJECT_ROOT = Path(__file__).parent.parent
+=======
+SKILL_ROOT = Path(__file__).parent.parent / "skill" / "maya-mgear"
+REPO_ROOT = Path(__file__).parent.parent
+>>>>>>> fa19b5f (fix: resolve SKILL.md strict-loader rejection and create_shifter_guide_from_template reporting)
 
 _COUNTER = [0]
 
@@ -313,3 +319,97 @@ class TestMainEntryPoints:
         result = mod.main(extra_unexpected_kwarg="value")
         assert isinstance(result, dict)
         assert "success" in result
+
+
+# ---------------------------------------------------------------------------
+# SKILL.md strict-loader contract regression test (Issue #27)
+# ---------------------------------------------------------------------------
+
+
+class TestSkillMdStrictLoaderContract:
+    """Verify skill/maya-mgear/SKILL.md conforms to the strict loader spec.
+
+    The strict loader rejects any top-level key that is not part of the
+    known spec (name, description, metadata).  A top-level ``version``
+    key was previously rejected.  This test ensures the installable
+    SKILL.md stays compatible with the strict loader contract.
+    """
+
+    # Known spec keys the strict loader accepts at the top level
+    KNOWN_TOP_LEVEL_KEYS = {"name", "description", "metadata"}
+
+    def test_skill_md_exists(self):
+        skill_md = SKILL_ROOT / "SKILL.md"
+        assert skill_md.is_file(), "skill/maya-mgear/SKILL.md must exist"
+
+    def test_skill_md_has_valid_yaml_frontmatter(self):
+        skill_md = SKILL_ROOT / "SKILL.md"
+        content = skill_md.read_text(encoding="utf-8")
+        # Extract YAML frontmatter between --- delimiters
+        parts = content.split("---")
+        assert len(parts) >= 3, "SKILL.md must have YAML frontmatter delimited by ---"
+        frontmatter = yaml.safe_load(parts[1])
+        assert isinstance(frontmatter, dict), "SKILL.md frontmatter must be a YAML mapping"
+
+    def test_skill_md_no_top_level_version(self):
+        """Top-level 'version' key is rejected by strict loader."""
+        skill_md = SKILL_ROOT / "SKILL.md"
+        content = skill_md.read_text(encoding="utf-8")
+        parts = content.split("---")
+        frontmatter = yaml.safe_load(parts[1])
+        assert "version" not in frontmatter, (
+            "Top-level 'version' key is rejected by strict loader. "
+            "Move it under metadata.dcc-mcp.version."
+        )
+
+    def test_skill_md_only_spec_top_level_keys(self):
+        """No non-spec top-level keys beyond name, description, metadata."""
+        skill_md = SKILL_ROOT / "SKILL.md"
+        content = skill_md.read_text(encoding="utf-8")
+        parts = content.split("---")
+        frontmatter = yaml.safe_load(parts[1])
+        unknown_keys = set(frontmatter.keys()) - self.KNOWN_TOP_LEVEL_KEYS
+        assert not unknown_keys, (
+            "Non-spec top-level key(s) {} — strict loader rejects these. "
+            "Move them under metadata.dcc-mcp.*".format(sorted(unknown_keys))
+        )
+
+    def test_skill_md_has_required_fields(self):
+        skill_md = SKILL_ROOT / "SKILL.md"
+        content = skill_md.read_text(encoding="utf-8")
+        parts = content.split("---")
+        frontmatter = yaml.safe_load(parts[1])
+        assert "name" in frontmatter, "SKILL.md must have a 'name' field"
+        assert "description" in frontmatter, "SKILL.md must have a 'description' field"
+        assert "metadata" in frontmatter, "SKILL.md must have a 'metadata' field"
+
+    def test_skill_md_metadata_has_dcc_mcp(self):
+        skill_md = SKILL_ROOT / "SKILL.md"
+        content = skill_md.read_text(encoding="utf-8")
+        parts = content.split("---")
+        frontmatter = yaml.safe_load(parts[1])
+        metadata = frontmatter.get("metadata", {})
+        assert "dcc-mcp" in metadata, "metadata must contain 'dcc-mcp' section"
+
+    def test_repo_root_skill_md_is_synced(self):
+        """Repo-root SKILL.md must be identical to the installable one."""
+        installable = SKILL_ROOT / "SKILL.md"
+        repo_root_md = REPO_ROOT / "SKILL.md"
+        assert repo_root_md.is_file(), "Root SKILL.md must exist"
+        install_content = installable.read_text(encoding="utf-8")
+        root_content = repo_root_md.read_text(encoding="utf-8")
+        assert install_content == root_content, (
+            "Root SKILL.md and skill/maya-mgear/SKILL.md are out of sync"
+        )
+
+    def test_depends_md_is_synced(self):
+        """metadata/depends.md must be identical in both locations."""
+        installable = SKILL_ROOT / "metadata" / "depends.md"
+        repo_root_md = REPO_ROOT / "metadata" / "depends.md"
+        assert installable.is_file(), "skill/maya-mgear/metadata/depends.md must exist"
+        assert repo_root_md.is_file(), "metadata/depends.md must exist"
+        install_content = installable.read_text(encoding="utf-8")
+        root_content = repo_root_md.read_text(encoding="utf-8")
+        assert install_content == root_content, (
+            "Root metadata/depends.md and skill/maya-mgear/metadata/depends.md are out of sync"
+        )

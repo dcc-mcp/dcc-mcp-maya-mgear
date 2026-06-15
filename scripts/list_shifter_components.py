@@ -13,14 +13,24 @@ from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_
 
 
 def _get_component_list() -> List[str]:
-    """Enumerate component names from the real ``getComponentDirectories()`` dict."""
+    """Enumerate component names from the real ``getComponentDirectories()`` dict.
+
+    Non-component files such as ``__init__.py`` are filtered out — only
+    valid mGear component type names are included.
+    """
     import mgear.shifter
 
     # Returns {path: [component_name, ...]} — verified real mGear API
     mapping = mgear.shifter.getComponentDirectories()
     names: List[str] = []
     for component_list in mapping.values():
-        names.extend(str(c) for c in component_list if not str(c).startswith("__"))
+        for c in component_list:
+            c_str = str(c)
+            # Filter out Python module files (e.g. __init__.py) that may
+            # appear alongside valid component names in the directory listing.
+            if c_str.endswith(".py"):
+                continue
+            names.append(c_str)
     return sorted(set(names))
 
 
