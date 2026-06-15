@@ -45,7 +45,7 @@ def _load_script(script_name: str):
 
 # Real return type of getComponentDirectories() — a {path: [name, ...]} dict.
 _FAKE_COMP_MAPPING = {
-    "/mock/shifter/components/classic": ["arm_2jnt_01", "leg_2jnt_01", "head_01"],
+    "/mock/shifter/components/classic": ["arm_2jnt_01", "leg_2jnt_01", "head_01", "__init__.py"],
     "/mock/shifter/components/epic": ["spine_ik_01", "tail_01"],
 }
 
@@ -332,6 +332,23 @@ class TestListShifterComponents:
             guide_names = [g["name"] for g in guides]
             assert "some_random_transform" not in guide_names
 
+    def test_filters_non_component_files(self):
+        """__init__.py and other .py files must NOT appear in the component list."""
+        mock_modules = _make_mock_modules()
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("list_shifter_components")
+            result = mod.list_shifter_components(include_guides=False)
+            assert result["success"] is True
+            ctx = result.get("context", {})
+            components = ctx.get("components", [])
+            # __init__.py must be filtered out
+            assert "__init__.py" not in components
+            # Still has the valid component names
+            assert "arm_2jnt_01" in components
+            assert "leg_2jnt_01" in components
+            assert ctx.get("total_components") == 5
+
 
 # ---------------------------------------------------------------------------
 # create_shifter_guide_from_template
@@ -412,12 +429,95 @@ class TestCreateShifterGuideFromTemplate:
         mock_gui_mgr.draw_comp = _constrained_draw_comp_none
         mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
 
+        # Simulate an empty scene (no existing or new guide nodes)
+        mock_cmds = mock_modules["maya.cmds"]
+        mock_cmds.ls.return_value = []  # no transforms in scene at all
+
         with patch.dict(sys.modules, mock_modules):
             mod = _load_script("create_shifter_guide_from_template")
             result = mod.create_shifter_guide_from_template(guide_name="g", template="leg_2jnt_01")
             assert result["success"] is False
             assert "node" not in result.get("context", {})
             assert "Failed" in result["message"]
+
+    def test_draw_comp_none_but_nodes_created_in_scene(self):
+        """When draw_comp() returns None but nodes appear in the scene → success.
+
+        This reproduces the mGear 5.2.1 behavior where draw_comp returns None
+        yet guide nodes (with isGearGuide/ismodel attrs) are created.
+        """
+        mock_gui_mgr = SimpleNamespace()
+        mock_gui_mgr.draw_comp = _constrained_draw_comp_none
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+
+        mock_cmds = mock_modules["maya.cmds"]
+        # First ls call (before snapshot): empty scene
+        # Second ls call (after draw_comp): new nodes appear
+        ls_calls = [iter([[]]), iter([["|control_C0_root", "|control_C0_sizeRef"]])]
+        mock_cmds.ls = MagicMock(side_effect=lambda **kw: next(ls_calls.pop(0)))
+
+        def fake_aq(attr, node=None, exists=False):
+            if "control_C0_root" in node:
+                return attr in ("isGearGuide", "comp_type")
+            if "control_C0_sizeRef" in node:
+                return attr == "ismodel"
+            return False
+
+        mock_cmds.attributeQuery = MagicMock(side_effect=fake_aq)
+        mock_cmds.getAttr = MagicMock(return_value="control_01")
+        mock_cmds.rename = MagicMock(return_value="dcc_mcp_test_control_guide")
+        mock_cmds.xform = MagicMock()
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("create_shifter_guide_from_template")
+            result = mod.create_shifter_guide_from_template(
+                guide_name="dcc_mcp_test_control_guide",
+                template="control_01",
+                position=[0, 0, 0],
+            )
+            assert result["success"] is True
+            ctx = result.get("context", {})
+            assert ctx.get("node") is not None
+            assert ctx.get("guide_root") is not None
+            assert len(ctx.get("created_nodes", [])) == 2
+            assert ctx.get("template") == "control_01"
+
+    def test_result_includes_guide_root_and_created_nodes(self):
+        """Success result must include guide_root and created_nodes."""
+        mock_gui_mgr = SimpleNamespace()
+        mock_gui_mgr.draw_comp = _constrained_draw_comp
+        mock_modules = _make_mock_modules(guide_manager=mock_gui_mgr)
+
+        mock_cmds = mock_modules["maya.cmds"]
+        # Empty scene before creation
+        # After creation: two nodes appear
+        ls_calls = [iter([[]]), iter([["|arm_2jnt_01_guide", "|arm_C0_root"]])]
+        mock_cmds.ls = MagicMock(side_effect=lambda **kw: next(ls_calls.pop(0)))
+
+        def fake_aq(attr, node=None, exists=False):
+            if "arm_C0_root" in node:
+                return attr == "ismodel"
+            if "arm_2jnt_01_guide" in node:
+                return attr == "isGearGuide"
+            return False
+
+        mock_cmds.attributeQuery = MagicMock(side_effect=fake_aq)
+        mock_cmds.getAttr = MagicMock(return_value="arm_2jnt_01")
+        mock_cmds.rename = MagicMock(side_effect=lambda n, name: name)
+        mock_cmds.xform = MagicMock()
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("create_shifter_guide_from_template")
+            result = mod.create_shifter_guide_from_template(
+                guide_name="my_arm",
+                template="arm_2jnt_01",
+                position=[0, 10, 0],
+            )
+            assert result["success"] is True
+            ctx = result.get("context", {})
+            assert "guide_root" in ctx, "Result must include guide_root"
+            assert "created_nodes" in ctx, "Result must include created_nodes"
+            assert len(ctx["created_nodes"]) == 2
 
 
 # ---------------------------------------------------------------------------
