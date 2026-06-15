@@ -355,8 +355,7 @@ class TestSkillMdStrictLoaderContract:
         parts = content.split("---")
         frontmatter = yaml.safe_load(parts[1])
         assert "version" not in frontmatter, (
-            "Top-level 'version' key is rejected by strict loader. "
-            "Move it under metadata.dcc-mcp.version."
+            "Top-level 'version' key is rejected by strict loader. Move it under metadata.dcc-mcp.version."
         )
 
     def test_skill_md_only_spec_top_level_keys(self):
@@ -367,8 +366,9 @@ class TestSkillMdStrictLoaderContract:
         frontmatter = yaml.safe_load(parts[1])
         unknown_keys = set(frontmatter.keys()) - self.KNOWN_TOP_LEVEL_KEYS
         assert not unknown_keys, (
-            "Non-spec top-level key(s) {} — strict loader rejects these. "
-            "Move them under metadata.dcc-mcp.*".format(sorted(unknown_keys))
+            "Non-spec top-level key(s) {} — strict loader rejects these. Move them under metadata.dcc-mcp.*".format(
+                sorted(unknown_keys)
+            )
         )
 
     def test_skill_md_has_required_fields(self):
@@ -395,9 +395,7 @@ class TestSkillMdStrictLoaderContract:
         assert repo_root_md.is_file(), "Root SKILL.md must exist"
         install_content = installable.read_text(encoding="utf-8")
         root_content = repo_root_md.read_text(encoding="utf-8")
-        assert install_content == root_content, (
-            "Root SKILL.md and skill/maya-mgear/SKILL.md are out of sync"
-        )
+        assert install_content == root_content, "Root SKILL.md and skill/maya-mgear/SKILL.md are out of sync"
 
     def test_depends_md_is_synced(self):
         """metadata/depends.md must be identical in both locations."""
