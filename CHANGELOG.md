@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.4...dcc-mcp-maya-mgear-v0.4.5) (2026-06-15)
+
+
+### Bug Fixes
+
+* resolve SKILL.md strict-loader rejection and create_shifter_guide_from_template reporting ([7899c13](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/7899c13d830f7ff8042ebfd53aae2c58171a7c1c))
+
 ## [0.4.4](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.3...dcc-mcp-maya-mgear-v0.4.4) (2026-06-14)
 
 
