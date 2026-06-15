@@ -3,7 +3,7 @@ name: maya-mgear
 description: mGear Shifter deep integration — inspect environments, list components, create guides, and build rigs.
 metadata:
   dcc-mcp:
-    version: v0.4.4
+    version: v0.4.5
     dcc: maya
     display_name: Maya mGear
     group: maya.job.pipeline
