@@ -214,6 +214,154 @@ class TestInspectMgearEnvironment:
                 assert "mgear.shifter.guide_manager" in key_modules
                 assert "mgear.shifter.io" in key_modules
 
+    # ------------------------------------------------------------------
+    # UPV math-node dependency tests
+    # ------------------------------------------------------------------
+
+    def test_upv_math_nodes_in_verbose_mode(self):
+        """Verbose mode reports all UPV math nodes as available."""
+        mock_cmds = MagicMock()
+        mock_cmds.allNodeTypes = MagicMock(
+            return_value=["subtract", "sum", "length", "max", "normalize", "crossProduct"]
+        )
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mgear": _make_mock_mgear(),
+                "mgear.shifter": MagicMock(),
+                "maya": mock_maya,
+                "maya.cmds": mock_cmds,
+            },
+        ):
+            mod = _load_script("inspect_mgear_environment")
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            upv = ctx.get("upv_math_nodes", {})
+            assert isinstance(upv, dict)
+            for node in ("subtract", "sum", "length", "max", "normalize", "crossProduct"):
+                assert upv.get(node) == "available"
+
+    def test_upv_math_nodes_partial_availability(self):
+        """Some math nodes unknown is handled gracefully."""
+        mock_cmds = MagicMock()
+        mock_cmds.allNodeTypes = MagicMock(return_value=["subtract", "max", "normalize"])
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mgear": _make_mock_mgear(),
+                "mgear.shifter": MagicMock(),
+                "maya": mock_maya,
+                "maya.cmds": mock_cmds,
+            },
+        ):
+            mod = _load_script("inspect_mgear_environment")
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            upv = ctx.get("upv_math_nodes", {})
+            assert upv.get("subtract") == "available"
+            assert upv.get("max") == "available"
+            assert upv.get("normalize") == "available"
+            assert upv.get("sum") == "unknown"
+            assert upv.get("length") == "unknown"
+            assert upv.get("crossProduct") == "unknown"
+
+    def test_upv_warnings_on_missing_nodes(self):
+        """Missing math nodes produce a warning when shifter is available."""
+        mock_cmds = MagicMock()
+        mock_cmds.allNodeTypes = MagicMock(return_value=["subtract"])
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mgear": _make_mock_mgear(),
+                "mgear.shifter": MagicMock(),
+                "maya": mock_maya,
+                "maya.cmds": mock_cmds,
+            },
+        ):
+            mod = _load_script("inspect_mgear_environment")
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            upv_warnings = ctx.get("upv_warnings", [])
+            assert len(upv_warnings) >= 1
+            warning_text = upv_warnings[0]
+            # Should mention specific missing nodes
+            assert "crossProduct" in warning_text or "sum" in warning_text or "length" in warning_text
+            assert "not registered" in warning_text or "not registered" in warning_text
+
+    def test_upv_no_warnings_when_all_available(self):
+        """When all math nodes are available, no UPV warnings appear."""
+        mock_cmds = MagicMock()
+        mock_cmds.allNodeTypes = MagicMock(
+            return_value=["subtract", "sum", "length", "max", "normalize", "crossProduct"]
+        )
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mgear": _make_mock_mgear(),
+                "mgear.shifter": MagicMock(),
+                "maya": mock_maya,
+                "maya.cmds": mock_cmds,
+            },
+        ):
+            mod = _load_script("inspect_mgear_environment")
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            assert "upv_warnings" not in ctx or ctx.get("upv_warnings") == []
+
+    def test_upv_nodes_maya_not_available(self):
+        """When maya.cmds is not importable, all nodes report unknown."""
+        mod = _load_script("inspect_mgear_environment")
+        mock_mgear = _make_mock_mgear()
+
+        # Only mock mgear — no maya in sys.modules
+        with patch.dict(sys.modules, {"mgear": mock_mgear, "mgear.shifter": MagicMock()}):
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            upv = ctx.get("upv_math_nodes", {})
+            # Without maya, all nodes should be "unknown"
+            for node in ("subtract", "sum", "length", "max", "normalize", "crossProduct"):
+                assert upv.get(node) == "unknown"
+
+    def test_upv_plugin_state_in_verbose_mode(self):
+        """Verbose mode reports UPV plugin load state."""
+        mock_cmds = MagicMock()
+        mock_cmds.allNodeTypes = MagicMock(return_value=["subtract"])
+        mock_cmds.pluginInfo = MagicMock(return_value=True)  # loaded
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        with patch.dict(
+            sys.modules,
+            {
+                "mgear": _make_mock_mgear(),
+                "mgear.shifter": MagicMock(),
+                "maya": mock_maya,
+                "maya.cmds": mock_cmds,
+            },
+        ):
+            mod = _load_script("inspect_mgear_environment")
+            result = mod.inspect_mgear_environment(verbose=True)
+            ctx = result.get("context", {})
+            plugin_state = ctx.get("upv_plugin_state", {})
+            assert isinstance(plugin_state, dict)
+            # Should have at least one plugin entry
+            assert len(plugin_state) >= 1
+            # If plugin exists, should be loaded
+            for status in plugin_state.values():
+                assert status in ("loaded", "not_loaded", "not_found", "unknown", "failed")
+
 
 # ---------------------------------------------------------------------------
 # list_shifter_components
