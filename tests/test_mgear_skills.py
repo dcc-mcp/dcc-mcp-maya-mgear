@@ -863,6 +863,151 @@ class TestExportShifterGuideTemplate:
 
 
 # ---------------------------------------------------------------------------
+# import_shifter_sample_template
+# ---------------------------------------------------------------------------
+
+
+class TestImportShifterSampleTemplate:
+    """Tests for import_shifter_sample_template tool.
+
+    The real ``mgear.shifter.io.import_guide_template(filePath)`` is
+    signature-constrained; calling it with wrong kwargs would raise
+    TypeError at runtime.
+    """
+
+    def test_graceful_degradation_when_mgear_missing(self):
+        mod = _load_script("import_shifter_sample_template")
+        result = mod.import_shifter_sample_template(template_name="quadruped")
+        assert result["success"] is False
+        assert "not available" in result["message"].lower()
+
+    def test_main_entry_point(self):
+        mod = _load_script("import_shifter_sample_template")
+        result = mod.main(template_name="quadruped")
+        assert isinstance(result, dict)
+        assert "success" in result
+
+    def test_required_parameters(self):
+        mod = _load_script("import_shifter_sample_template")
+        with pytest.raises(TypeError):
+            mod.import_shifter_sample_template()
+
+    def test_template_not_found_returns_error(self):
+        """When template file does not exist in mGear installation, return error."""
+        mock_modules = _make_mock_modules()
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="nonexistent_template")
+            assert result["success"] is False
+            assert "not found" in result["message"].lower()
+
+    def test_imports_sample_template_successfully(self):
+        """Successful import returns structured metadata about the imported guide."""
+        def _constrained_import(filePath):
+            return "imported_quadruped_root"
+
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = _constrained_import
+        mock_modules = _make_mock_modules(io=mock_io)
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                result = mod.import_shifter_sample_template(template_name="quadruped")
+                assert result["success"] is True
+                ctx = result.get("context", {})
+                assert ctx.get("imported_guide_root") == "imported_quadruped_root"
+                assert ctx.get("template_name") == "quadruped"
+
+    def test_calls_import_guide_template_with_filePath_kwarg(self):
+        """Tool must call import_guide_template(filePath=...) with filePath as keyword."""
+        calls = []
+
+        def _tracked_import_guide(filePath):
+            calls.append({"filePath": filePath})
+            return "root_guide"
+
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = _tracked_import_guide
+        mock_modules = _make_mock_modules(io=mock_io)
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                mod.import_shifter_sample_template(template_name="quadruped")
+                assert len(calls) == 1
+                assert "filePath" in calls[0]
+                assert calls[0]["filePath"].replace("\\", "/").endswith("quadruped.sgt")
+
+    def test_template_name_without_extension_resolves_correctly(self):
+        """Template name without .sgt should still resolve to a .sgt file path."""
+        calls = []
+
+        def _tracked_import_guide(filePath):
+            calls.append({"filePath": filePath})
+            return "root"
+
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = _tracked_import_guide
+        mock_modules = _make_mock_modules(io=mock_io)
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                mod.import_shifter_sample_template(template_name="biped")
+                assert len(calls) == 1
+                assert calls[0]["filePath"].replace("\\", "/").endswith("biped.sgt")
+
+    def test_select_guide_true_calls_maya_select(self):
+        """When select_guide is True, cmds.select should be called."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = lambda filePath: "imported_root"
+        mock_modules = _make_mock_modules(io=mock_io)
+        mock_cmds = mock_modules["maya.cmds"]
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                mod.import_shifter_sample_template(template_name="quadruped", select_guide=True)
+                mock_cmds.select.assert_called_once_with("imported_root")
+
+    def test_select_guide_false_does_not_select(self):
+        """When select_guide is False, cmds.select should NOT be called."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = lambda filePath: "imported_root"
+        mock_modules = _make_mock_modules(io=mock_io)
+        mock_cmds = mock_modules["maya.cmds"]
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                mod.import_shifter_sample_template(template_name="quadruped", select_guide=False)
+                mock_cmds.select.assert_not_called()
+
+    def test_returned_context_has_all_expected_keys(self):
+        """Result context must include all fields specified in the tool contract."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = lambda filePath: "quadruped_root_guide"
+        mock_modules = _make_mock_modules(io=mock_io)
+
+        with patch.dict(sys.modules, mock_modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_script("import_shifter_sample_template")
+                result = mod.import_shifter_sample_template(template_name="quadruped", select_guide=False)
+                assert result["success"] is True
+                ctx = result.get("context", {})
+                assert "imported_guide_root" in ctx
+                assert "component_count" in ctx
+                assert "component_names" in ctx
+                assert "top_level_nodes" in ctx
+                assert "warnings" in ctx
+                assert "template_name" in ctx
+                assert "select_guide" in ctx
+                assert ctx["select_guide"] is False
+
+
+# ---------------------------------------------------------------------------
 # ResultDictConformance
 # ---------------------------------------------------------------------------
 
@@ -876,6 +1021,7 @@ class TestResultDictConformance:
         ("create_shifter_guide_from_template", {"guide_name": "t", "template": "arm_2jnt_01"}),
         ("build_shifter_rig", {}),
         ("export_shifter_guide_template", {"guide_name": "t"}),
+        ("import_shifter_sample_template", {"template_name": "quadruped"}),
     ]
 
     REQUIRED_KEYS = {"success", "message", "prompt", "error", "context"}

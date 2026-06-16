@@ -20,7 +20,7 @@ the skill is automatically registered with the running Maya adapter.
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `maya-mgear` | 5 | Inspect, list, create, build, and export mGear Shifter components |
+| `maya-mgear` | 6 | Inspect, list, create, build, export, and import mGear Shifter components |
 
 ### Tools
 
@@ -31,6 +31,7 @@ the skill is automatically registered with the running Maya adapter.
 | `create_shifter_guide_from_template` | Create a guide from a named template at a position |
 | `build_shifter_rig` | Build a rig from an existing Shifter guide |
 | `export_shifter_guide_template` | Export a guide or component as a reusable template |
+| `import_shifter_sample_template` | Import an official sample template (e.g. quadruped.sgt) with structured metadata |
 
 ## Prerequisites
 
@@ -50,7 +51,7 @@ pip install -e ".[dev]"
 # Lint
 ruff check . && ruff format --check .
 
-# Test (68 tests, 5 tools, 3 OS × 5 Python on CI)
+# Test (85 tests, 6 tools, 3 OS × 5 Python on CI)
 pytest tests/ -v
 ```
 
