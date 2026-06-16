@@ -97,3 +97,21 @@ tools:
         type: boolean
         default: true
         description: Include metadata and annotations in the export.
+
+- name: import_shifter_sample_template
+  description: Import an official mGear Shifter sample template (e.g. quadruped.sgt) into the current scene.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - template_name
+    properties:
+      template_name:
+        type: string
+        description: Name of the sample template to import (e.g. "quadruped.sgt" or "quadruped").
+      select_guide:
+        type: boolean
+        default: true
+        description: Select the imported guide root in the Maya viewport after import.

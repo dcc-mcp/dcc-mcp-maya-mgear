@@ -60,13 +60,14 @@ class TestPackageImport:
     def test_scripts_directory_exists(self):
         assert SCRIPTS_ROOT.is_dir()
 
-    def test_all_five_tool_scripts_exist(self):
+    def test_all_six_tool_scripts_exist(self):
         for name in (
             "inspect_mgear_environment",
             "list_shifter_components",
             "create_shifter_guide_from_template",
             "build_shifter_rig",
             "export_shifter_guide_template",
+            "import_shifter_sample_template",
         ):
             assert (SCRIPTS_ROOT / "{}.py".format(name)).is_file()
 
@@ -153,6 +154,11 @@ class TestMgearUnavailablePath:
         ),
         ("build_shifter_rig", "build_shifter_rig", {}),
         ("export_shifter_guide_template", "export_shifter_guide_template", {"guide_name": "t"}),
+        (
+            "import_shifter_sample_template",
+            "import_shifter_sample_template",
+            {"template_name": "quadruped"},
+        ),
     ]
 
     @pytest.mark.parametrize("tool_module,entry_point,kwargs", TOOLS)
@@ -284,6 +290,29 @@ class TestPartialMgearAvailability:
             assert isinstance(result, dict)
             assert result["success"] is False
 
+    def test_import_template_handles_io_exception(self):
+        """import_shifter_sample_template must catch exception from import_guide_template()."""
+        _clear_mgear()
+
+        mock_mgear = MagicMock()
+        mock_mgear.__path__ = ["/mock/mgear"]
+        mock_shifter = SimpleNamespace()
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = MagicMock(side_effect=RuntimeError("import failed"))
+        mock_shifter.io = mock_io
+        mock_mgear.shifter = mock_shifter
+
+        modules = {
+            "mgear": mock_mgear,
+            "mgear.shifter": mock_shifter,
+        }
+        with patch.dict(sys.modules, modules):
+            with patch("os.path.isfile", return_value=True):
+                mod = _load_tool("import_shifter_sample_template")
+                result = mod.import_shifter_sample_template(template_name="quadruped")
+                assert isinstance(result, dict)
+                assert result["success"] is False
+
 
 # ---------------------------------------------------------------------------
 # main() entry point exact signature contract
@@ -299,6 +328,7 @@ class TestMainEntryPoints:
         "create_shifter_guide_from_template",
         "build_shifter_rig",
         "export_shifter_guide_template",
+        "import_shifter_sample_template",
     ]
 
     @pytest.mark.parametrize("tool_name", TOOL_NAMES)
