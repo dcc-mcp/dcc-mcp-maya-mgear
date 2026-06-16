@@ -5,9 +5,24 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
+
+# UPV (Universal Pose Visualizer) math node types used by mGear Shifter guide
+# visualizations.  These are registered Maya node types that the UPV system
+# queries at runtime.
+_UPV_MATH_NODES = [
+    "subtract",
+    "sum",
+    "length",
+    "max",
+    "normalize",
+    "crossProduct",
+]
+
+# Maya plugins relevant to UPV math-node support.
+_UPV_RELEVANT_PLUGINS = ["mgear_maya"]
 
 
 def _module_available(module_name: str) -> bool:
@@ -23,6 +38,76 @@ def _get_mgear_version(mgear: Any) -> str:
         if v is not None:
             return str(v)
     return "unknown"
+
+
+def _probe_maya_node_types(node_types: List[str]) -> Dict[str, str]:
+    """Check Maya node type registration without creating test nodes.
+
+    Args:
+        node_types: Maya node type names to probe.
+
+    Returns:
+        Mapping of node type name to status string — one of
+        "available" (registered in Maya), "unknown" (not found or Maya
+        unavailable), or "failed" (error during probe).
+    """
+    try:
+        import maya.cmds as cmds  # noqa: F811
+    except ImportError:
+        return {nt: "unknown" for nt in node_types}
+
+    result: Dict[str, str] = {}
+    try:
+        registered = set(cmds.allNodeTypes())
+    except Exception:
+        registered = None
+
+    for nt in node_types:
+        if registered is not None:
+            result[nt] = "available" if nt in registered else "unknown"
+        else:
+            result[nt] = "failed"
+    return result
+
+
+def _check_upv_plugin_state() -> Dict[str, str]:
+    """Check load state of UPV-relevant Maya plugins.
+
+    Returns:
+        Mapping of plugin name to status — one of "loaded", "not_loaded",
+        "not_found", "unknown", or "failed".
+    """
+    result: Dict[str, str] = {}
+    try:
+        import maya.cmds as cmds  # noqa: F811
+    except ImportError:
+        for p in _UPV_RELEVANT_PLUGINS:
+            result[p] = "unknown"
+        return result
+
+    for plugin in _UPV_RELEVANT_PLUGINS:
+        try:
+            loaded = cmds.pluginInfo(plugin, query=True, loaded=True)
+            result[plugin] = "loaded" if loaded else "not_loaded"
+        except RuntimeError:
+            result[plugin] = "not_found"
+        except Exception:
+            result[plugin] = "failed"
+    return result
+
+
+def _compute_upv_warnings(shifter_available: bool, upv_nodes: Dict[str, str]) -> List[str]:
+    """Build user-facing warnings about UPV math-node availability."""
+    warnings: List[str] = []
+    if not shifter_available:
+        return warnings
+    missing = sorted(nt for nt, st in upv_nodes.items() if st != "available")
+    if missing:
+        warnings.append(
+            "UPV math node(s) {} not registered — complex guide "
+            "visualizations may not render correctly.".format(", ".join(missing))
+        )
+    return warnings
 
 
 def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
@@ -76,6 +161,14 @@ def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
                 context["key_modules"] = key_modules
                 context["maya_available"] = _module_available("maya.cmds")
                 context["maya_version"] = os.environ.get("MAYA_VERSION", "unknown")
+
+                # UPV math-node dependency check
+                upv_nodes = _probe_maya_node_types(_UPV_MATH_NODES)
+                context["upv_math_nodes"] = upv_nodes
+                context["upv_plugin_state"] = _check_upv_plugin_state()
+                upv_warnings = _compute_upv_warnings(shifter_available, upv_nodes)
+                if upv_warnings:
+                    context["upv_warnings"] = upv_warnings
         else:
             context["maya_available"] = _module_available("maya.cmds")
 
