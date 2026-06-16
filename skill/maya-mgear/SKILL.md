@@ -17,6 +17,7 @@ metadata:
       - "Inspect the mGear environment"
       - "List all Shifter components in the scene"
       - "Create a Shifter guide from template"
+      - "Import an official Shifter sample template (e.g. quadruped)"
       - "Build a rig from an existing guide"
       - "Export a Shifter guide template"
     contact:

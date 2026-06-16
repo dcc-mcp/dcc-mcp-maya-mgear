@@ -97,3 +97,21 @@ tools:
         type: boolean
         default: true
         description: Include metadata and annotations in the export.
+
+- name: import_shifter_sample_template
+  description: Import an official mGear Shifter sample template such as quadruped.sgt.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - template_name
+    properties:
+      template_name:
+        type: string
+        description: Template name (e.g. "quadruped" or "quadruped.sgt"). Searched in mgear/shifter/samples/.
+      select_guide:
+        type: boolean
+        default: true
+        description: Select the imported guide root after import.
