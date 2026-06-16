@@ -1,6 +1,6 @@
 ---
 name: maya-mgear
-description: mGear Shifter deep integration — inspect environments, list components, create guides, and build rigs.
+description: mGear Shifter deep integration — inspect environments, list components, create guides, build rigs, export templates, and import sample templates.
 metadata:
   dcc-mcp:
     version: v0.4.5
@@ -22,6 +22,7 @@ metadata:
       - "Create a Shifter guide from template"
       - "Build a rig from an existing guide"
       - "Export a Shifter guide template"
+      - "Import a Shifter sample template (e.g. quadruped)"
     contact:
       name: dcc-mcp team
       url: https://github.com/dcc-mcp/dcc-mcp-maya-mgear
