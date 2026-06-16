@@ -596,6 +596,160 @@ class TestExportShifterGuideTemplate:
 
 
 # ---------------------------------------------------------------------------
+# import_shifter_sample_template
+# ---------------------------------------------------------------------------
+
+
+class TestImportShifterSampleTemplate:
+    """Tests for import_shifter_sample_template tool.
+
+    The real ``import_guide_template(filePath)`` accepts a single keyword
+    argument *filePath* pointing to the template file on disk.
+    """
+
+    def test_graceful_degradation_when_mgear_missing(self):
+        mod = _load_script("import_shifter_sample_template")
+        result = mod.import_shifter_sample_template(template_name="quadruped")
+        assert result["success"] is False
+        assert "not available" in result["message"].lower()
+
+    def test_main_entry_point(self):
+        mod = _load_script("import_shifter_sample_template")
+        result = mod.main(template_name="quadruped")
+        assert isinstance(result, dict)
+        assert "success" in result
+
+    def test_required_parameters(self):
+        mod = _load_script("import_shifter_sample_template")
+        with pytest.raises(TypeError):
+            mod.import_shifter_sample_template()
+
+    def test_template_not_found_returns_error(self):
+        """When the template file is not found, must return skill_error."""
+        mock_io = SimpleNamespace()
+
+        def _import_guide_template(filePath):
+            raise AssertionError("should not be called when template is missing")
+
+        mock_io.import_guide_template = _import_guide_template
+        mock_modules = _make_mock_modules(io=mock_io)
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="nonexistent_template")
+            assert result["success"] is False
+            assert "not found" in result["message"].lower()
+            ctx = result.get("context", {})
+            assert ctx.get("template_name") == "nonexistent_template"
+
+    def _setup_template_mock(self, io_mock):
+        """Create a mock mgear environment with a fake shifter/samples/ directory.
+
+        _resolve_template_path expects ``mgear.__path__[0]/shifter/samples/``,
+        so we create a temp root with that structure.
+        """
+        import tempfile
+
+        mgear_root = Path(tempfile.mkdtemp())
+        samples_dir = mgear_root / "shifter" / "samples"
+        samples_dir.mkdir(parents=True)
+        (samples_dir / "quadruped.sgt").write_text("fake_template")
+
+        mock_mgear = _make_mock_mgear()
+        mock_mgear.__path__ = [str(mgear_root)]
+
+        mock_shifter = SimpleNamespace()
+        mock_shifter.__path__ = [str(mgear_root / "shifter")]
+        mock_shifter.getComponentDirectories = _constrained_getComponentDirectories
+        mock_shifter.io = io_mock
+
+        mock_mgear.shifter = mock_shifter
+
+        return {
+            "mgear": mock_mgear,
+            "mgear.shifter": mock_shifter,
+            "mgear.shifter.io": io_mock,
+        }
+
+    def test_calls_import_guide_template_with_filePath(self):
+        """Tool must call import_guide_template(filePath=...) with keyword argument."""
+        calls = []
+
+        def _tracked_import(filePath):
+            calls.append({"filePath": filePath})
+
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = _tracked_import
+
+        mock_modules = self._setup_template_mock(mock_io)
+        mock_modules.update({"maya": MagicMock(), "maya.cmds": MagicMock()})
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="quadruped")
+            assert result["success"] is True
+            assert len(calls) == 1
+            assert "quadruped.sgt" in calls[0]["filePath"]
+
+    def test_returns_structured_result(self):
+        """Success result must include guide_root, total_components, etc."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = MagicMock()
+
+        mock_modules = self._setup_template_mock(mock_io)
+        mock_modules.update({"maya": MagicMock(), "maya.cmds": MagicMock()})
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="quadruped")
+            assert result["success"] is True
+            ctx = result.get("context", {})
+            assert "guide_root" in ctx
+            assert "total_components" in ctx
+            assert "component_names" in ctx
+            assert "created_nodes" in ctx
+            assert "warnings" in ctx
+            assert ctx["template_name"] == "quadruped"
+            assert "template_path" in ctx
+
+    def test_select_guide_defaults_to_true(self):
+        """select_guide parameter defaults to True and selects root after import."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = MagicMock()
+
+        mock_cmds = MagicMock()
+        mock_cmds.ls.return_value = []
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        mock_modules = self._setup_template_mock(mock_io)
+        mock_modules.update({"maya": mock_maya, "maya.cmds": mock_cmds})
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="quadruped")
+            assert result["success"] is True
+
+    def test_select_guide_false_skips_selection(self):
+        """When select_guide=False, no cmds.select call should be made."""
+        mock_io = SimpleNamespace()
+        mock_io.import_guide_template = MagicMock()
+
+        mock_cmds = MagicMock()
+        mock_maya = MagicMock()
+        mock_maya.cmds = mock_cmds
+
+        mock_modules = self._setup_template_mock(mock_io)
+        mock_modules.update({"maya": mock_maya, "maya.cmds": mock_cmds})
+
+        with patch.dict(sys.modules, mock_modules):
+            mod = _load_script("import_shifter_sample_template")
+            result = mod.import_shifter_sample_template(template_name="quadruped", select_guide=False)
+            assert result["success"] is True
+            mock_cmds.select.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # ResultDictConformance
 # ---------------------------------------------------------------------------
 
@@ -609,6 +763,7 @@ class TestResultDictConformance:
         ("create_shifter_guide_from_template", {"guide_name": "t", "template": "arm_2jnt_01"}),
         ("build_shifter_rig", {}),
         ("export_shifter_guide_template", {"guide_name": "t"}),
+        ("import_shifter_sample_template", {"template_name": "quadruped"}),
     ]
 
     REQUIRED_KEYS = {"success", "message", "prompt", "error", "context"}
