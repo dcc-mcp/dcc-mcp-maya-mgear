@@ -73,9 +73,7 @@ class TestPackageImport:
 
     @pytest.mark.parametrize(
         "depends_path",
-        (
-            PROJECT_ROOT / "skill" / "maya-mgear" / "metadata" / "depends.md",
-        ),
+        (PROJECT_ROOT / "skill" / "maya-mgear" / "metadata" / "depends.md",),
     )
     def test_depends_md_uses_loader_dependency_list_format(self, depends_path):
         lines = depends_path.read_text(encoding="utf-8").splitlines()
@@ -105,17 +103,13 @@ class TestSkillMetadata:
     def test_no_root_skill_md(self):
         """Root-level SKILL.md is forbidden — canonical path is skill/maya-mgear/SKILL.md."""
         root_skill = PROJECT_ROOT / "SKILL.md"
-        assert not root_skill.is_file(), (
-            "Root-level SKILL.md is forbidden. Use skill/maya-mgear/SKILL.md."
-        )
+        assert not root_skill.is_file(), "Root-level SKILL.md is forbidden. Use skill/maya-mgear/SKILL.md."
 
     def test_no_root_tools_yaml_or_depends_md(self):
         """Root-level tools.yaml and metadata/depends.md are forbidden."""
         root_tools = PROJECT_ROOT / "tools.yaml"
         root_depends = PROJECT_ROOT / "metadata" / "depends.md"
-        assert not root_tools.is_file(), (
-            "Root-level tools.yaml is forbidden. Use skill/maya-mgear/tools.yaml."
-        )
+        assert not root_tools.is_file(), "Root-level tools.yaml is forbidden. Use skill/maya-mgear/tools.yaml."
         assert not root_depends.is_file(), (
             "Root-level metadata/depends.md is forbidden. Use skill/maya-mgear/metadata/depends.md."
         )
