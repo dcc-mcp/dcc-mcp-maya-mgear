@@ -73,10 +73,7 @@ class TestPackageImport:
 
     @pytest.mark.parametrize(
         "depends_path",
-        (
-            PROJECT_ROOT / "metadata" / "depends.md",
-            PROJECT_ROOT / "skill" / "maya-mgear" / "metadata" / "depends.md",
-        ),
+        (PROJECT_ROOT / "skill" / "maya-mgear" / "metadata" / "depends.md",),
     )
     def test_depends_md_uses_loader_dependency_list_format(self, depends_path):
         lines = depends_path.read_text(encoding="utf-8").splitlines()
@@ -103,13 +100,19 @@ class TestSkillMetadata:
         content = self.SKILL_MD.read_text(encoding="utf-8")
         assert "version:" in content, "SKILL.md must declare an explicit version field"
 
-    def test_root_skill_dcc_is_maya(self):
-        content = self.ROOT_SKILL_MD.read_text(encoding="utf-8")
-        assert "dcc: maya" in content, "root SKILL.md must declare dcc: maya"
+    def test_no_root_skill_md(self):
+        """Root-level SKILL.md is forbidden — canonical path is skill/maya-mgear/SKILL.md."""
+        root_skill = PROJECT_ROOT / "SKILL.md"
+        assert not root_skill.is_file(), "Root-level SKILL.md is forbidden. Use skill/maya-mgear/SKILL.md."
 
-    def test_root_skill_has_version(self):
-        content = self.ROOT_SKILL_MD.read_text(encoding="utf-8")
-        assert "version:" in content, "root SKILL.md must declare an explicit version field"
+    def test_no_root_tools_yaml_or_depends_md(self):
+        """Root-level tools.yaml and metadata/depends.md are forbidden."""
+        root_tools = PROJECT_ROOT / "tools.yaml"
+        root_depends = PROJECT_ROOT / "metadata" / "depends.md"
+        assert not root_tools.is_file(), "Root-level tools.yaml is forbidden. Use skill/maya-mgear/tools.yaml."
+        assert not root_depends.is_file(), (
+            "Root-level metadata/depends.md is forbidden. Use skill/maya-mgear/metadata/depends.md."
+        )
 
     def test_skill_version_matches_pyproject(self):
         """SKILL.md version should align with pyproject.toml."""
@@ -418,23 +421,13 @@ class TestSkillMdStrictLoaderContract:
         metadata = frontmatter.get("metadata", {})
         assert "dcc-mcp" in metadata, "metadata must contain 'dcc-mcp' section"
 
-    def test_repo_root_skill_md_is_synced(self):
-        """Repo-root SKILL.md must be identical to the installable one."""
-        installable = SKILL_ROOT / "SKILL.md"
+    def test_no_root_skill_md_or_depends_md(self):
+        """Root-level SKILL.md and metadata/depends.md are forbidden."""
         repo_root_md = REPO_ROOT / "SKILL.md"
-        assert repo_root_md.is_file(), "Root SKILL.md must exist"
-        install_content = installable.read_text(encoding="utf-8")
-        root_content = repo_root_md.read_text(encoding="utf-8")
-        assert install_content == root_content, "Root SKILL.md and skill/maya-mgear/SKILL.md are out of sync"
-
-    def test_depends_md_is_synced(self):
-        """metadata/depends.md must be identical in both locations."""
-        installable = SKILL_ROOT / "metadata" / "depends.md"
-        repo_root_md = REPO_ROOT / "metadata" / "depends.md"
-        assert installable.is_file(), "skill/maya-mgear/metadata/depends.md must exist"
-        assert repo_root_md.is_file(), "metadata/depends.md must exist"
-        install_content = installable.read_text(encoding="utf-8")
-        root_content = repo_root_md.read_text(encoding="utf-8")
-        assert install_content == root_content, (
-            "Root metadata/depends.md and skill/maya-mgear/metadata/depends.md are out of sync"
+        repo_depends_md = REPO_ROOT / "metadata" / "depends.md"
+        assert not repo_root_md.is_file(), (
+            "Root-level SKILL.md is forbidden. The canonical path is skill/maya-mgear/SKILL.md."
+        )
+        assert not repo_depends_md.is_file(), (
+            "Root-level metadata/depends.md is forbidden. The canonical path is skill/maya-mgear/metadata/depends.md."
         )
