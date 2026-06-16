@@ -62,6 +62,7 @@ REQUIRED_TOOLS = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fail(msg: str) -> None:
     print(f"ERROR: {msg}")
     sys.exit(1)
@@ -87,6 +88,7 @@ def _read_yaml(path: pathlib.Path) -> dict:
 # Check 1: No forbidden root-level skill files
 # ---------------------------------------------------------------------------
 
+
 def check_no_root_skill_files() -> None:
     """Verify no forbidden skill files exist at repo root.
 
@@ -103,15 +105,14 @@ def check_no_root_skill_files() -> None:
         print("  Forbidden root-level skill files detected:")
         for e in errors:
             print(f"    ERROR: {e}")
-        _fail(
-            "Root-level skill files are forbidden. The canonical path is skill/maya-mgear/."
-        )
+        _fail("Root-level skill files are forbidden. The canonical path is skill/maya-mgear/.")
     print(f"  [OK] No forbidden root-level skill files ({len(FORBIDDEN_ROOT_PATHS)} paths checked)")
 
 
 # ---------------------------------------------------------------------------
 # Check 2: File existence
 # ---------------------------------------------------------------------------
+
 
 def check_files_exist() -> None:
     """Verify all required files exist."""
@@ -133,6 +134,7 @@ def check_files_exist() -> None:
 # ---------------------------------------------------------------------------
 # Check 3: SKILL.md lint
 # ---------------------------------------------------------------------------
+
 
 def check_skill_md() -> None:
     """Lint the canonical SKILL.md frontmatter."""
@@ -192,6 +194,7 @@ def check_skill_md() -> None:
 # Check 4: tools.yaml lint + source_file resolution
 # ---------------------------------------------------------------------------
 
+
 def check_tools_yaml() -> None:
     """Lint tools.yaml and verify source_file paths resolve."""
     data = _read_yaml(CANONICAL_TOOLS_YAML)
@@ -228,6 +231,7 @@ def check_tools_yaml() -> None:
 # ---------------------------------------------------------------------------
 # Check 5: Version consistency
 # ---------------------------------------------------------------------------
+
 
 def check_version_consistency() -> None:
     """Verify version is consistent across all metadata sources."""
@@ -268,12 +272,15 @@ def check_version_consistency() -> None:
     if mp_version != pyproject_version:
         _fail(f"marketplace.json version={mp_version}, expected {pyproject_version}")
 
-    print(f"  [OK] Version consistent: {pyproject_version} across pyproject.toml, SKILL.md, marketplace.json, release-please")
+    print(
+        f"  [OK] Version consistent: {pyproject_version} across pyproject.toml, SKILL.md, marketplace.json, release-please"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Check 6: No-Maya discovery/load smoke
 # ---------------------------------------------------------------------------
+
 
 def check_discovery_smoke() -> None:
     """Verify the skill package can be discovered and loaded without Maya.
@@ -288,6 +295,7 @@ def check_discovery_smoke() -> None:
     try:
         sys.path.insert(0, str(REPO_ROOT / "src"))
         import dcc_mcp_maya_mgear  # noqa: F401
+
         print("    [OK] dcc_mcp_maya_mgear package imported")
     except ImportError as e:
         _fail(f"Package import failed: {e}")
@@ -310,6 +318,7 @@ def check_discovery_smoke() -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Run all validation checks."""
