@@ -194,8 +194,6 @@ def check_skill_md() -> None:
 
 def check_tools_yaml() -> None:
     """Lint tools.yaml and verify source_file paths resolve."""
-    import yaml
-
     data = _read_yaml(CANONICAL_TOOLS_YAML)
     tools = data.get("tools", [])
     if not isinstance(tools, list):
