@@ -73,6 +73,7 @@ REQUIRED_TOOLS = [
     "create_shifter_guide_from_template",
     "build_shifter_rig",
     "export_shifter_guide_template",
+    "import_shifter_sample_template",
 ]
 
 
