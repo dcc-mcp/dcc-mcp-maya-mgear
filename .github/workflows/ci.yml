@@ -58,10 +58,10 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ tools/
 
       - name: Run ruff format check
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ tools/
 
   skill-lint:
     name: Lint Skills
@@ -77,88 +77,64 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
-      - name: Validate SKILL.md files (root + nested)
+      - name: Validate canonical SKILL.md
         run: |
           python << 'PYEOF'
           import yaml, pathlib, sys
-          SKILL_PATHS = [
-              'skill/maya-mgear/SKILL.md',
-              'SKILL.md',
-          ]
-          for sp in SKILL_PATHS:
-              p = pathlib.Path(sp)
-              for doc in yaml.safe_load_all(p.read_text()):
-                  if doc is not None:
-                      data = doc
-                      break
-              assert data.get('name') == 'maya-mgear', f'{sp}: Missing or wrong skill name'
-              dcc_mcp = data.get('metadata', {}).get('dcc-mcp', {})
-              assert 'depends' in dcc_mcp, f'{sp}: Missing depends under metadata.dcc-mcp'
-              print(f'{sp} OK')
+          CANONICAL_SKILL = 'skill/maya-mgear/SKILL.md'
+          p = pathlib.Path(CANONICAL_SKILL)
+          for doc in yaml.safe_load_all(p.read_text()):
+              if doc is not None:
+                  data = doc
+                  break
+          assert data.get('name') == 'maya-mgear', f'{CANONICAL_SKILL}: Missing or wrong skill name'
+          dcc_mcp = data.get('metadata', {}).get('dcc-mcp', {})
+          assert 'depends' in dcc_mcp, f'{CANONICAL_SKILL}: Missing depends under metadata.dcc-mcp'
+          print(f'{CANONICAL_SKILL} OK')
           PYEOF
 
-      - name: Validate tools.yaml files (root + nested)
+      - name: Validate canonical tools.yaml
         run: |
           python << 'PYEOF'
           import yaml, pathlib, sys
-          TOOLS_PATHS = [
-              'skill/maya-mgear/tools.yaml',
-              'tools.yaml',
-          ]
-          for tp in TOOLS_PATHS:
-              p = pathlib.Path(tp)
-              data = yaml.safe_load(p.read_text())
-              tools = data.get('tools', [])
-              assert len(tools) == 6, f'{tp}: Expected 6 tools, got {len(tools)}'
-              names = [t['name'] for t in tools]
-              assert 'inspect_mgear_environment' in names
-              assert 'list_shifter_components' in names
-              assert 'create_shifter_guide_from_template' in names
-              assert 'build_shifter_rig' in names
-              assert 'export_shifter_guide_template' in names
-              assert 'import_shifter_sample_template' in names
-              print(f'{tp}: All {len(tools)} tools validated OK: {names}')
+          CANONICAL_TOOLS = 'skill/maya-mgear/tools.yaml'
+          p = pathlib.Path(CANONICAL_TOOLS)
+          data = yaml.safe_load(p.read_text())
+          tools = data.get('tools', [])
+          assert len(tools) == 6, f'{CANONICAL_TOOLS}: Expected 6 tools, got {len(tools)}'
+          names = [t['name'] for t in tools]
+          assert 'inspect_mgear_environment' in names
+          assert 'list_shifter_components' in names
+          assert 'create_shifter_guide_from_template' in names
+          assert 'build_shifter_rig' in names
+          assert 'export_shifter_guide_template' in names
+          assert 'import_shifter_sample_template' in names
+          print(f'{CANONICAL_TOOLS}: All {len(tools)} tools validated OK: {names}')
           PYEOF
 
-      - name: Detect drift — root vs nested copies
+      - name: Verify no forbidden root-level skill files
         run: |
-          echo "## Drift detection: root-level vs nested skill files" >> $GITHUB_STEP_SUMMARY
+          echo "## Layout guard: no forbidden root-level skill files" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          ROOT_SKILL="SKILL.md"
-          NESTED_SKILL="skill/maya-mgear/SKILL.md"
-          ROOT_TOOLS="tools.yaml"
-          NESTED_TOOLS="skill/maya-mgear/tools.yaml"
+          forbidden=0
 
-          drift=0
+          for path in "SKILL.md" "tools.yaml" "metadata/depends.md" "scripts/"; do
+            if [ -e "$path" ]; then
+              echo "❌ Forbidden root-level path exists: $path" >> $GITHUB_STEP_SUMMARY
+              forbidden=1
+            fi
+          done
 
-          # SKILL.md diff
-          if diff -u "$NESTED_SKILL" "$ROOT_SKILL"; then
-            echo "✅ SKILL.md: root matches nested copy" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ SKILL.md: DRIFT DETECTED — root and nested copies differ!" >> $GITHUB_STEP_SUMMARY
-            drift=1
-          fi
-
-          # tools.yaml diff
-          if diff -u "$NESTED_TOOLS" "$ROOT_TOOLS"; then
-            echo "✅ tools.yaml: root matches nested copy" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ tools.yaml: DRIFT DETECTED — root and nested copies differ!" >> $GITHUB_STEP_SUMMARY
-            drift=1
-          fi
-
-          if [ $drift -ne 0 ]; then
+          if [ $forbidden -ne 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "## Action required" >> $GITHUB_STEP_SUMMARY
-            echo "Root-level SKILL.md / tools.yaml must stay in sync with the nested copies under skill/maya-mgear/. Update the root copies to match." >> $GITHUB_STEP_SUMMARY
+            echo "Root-level SKILL.md, tools.yaml, metadata/, and scripts/ are forbidden." >> $GITHUB_STEP_SUMMARY
+            echo "The canonical path for all skill files is skill/maya-mgear/." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
-          # NOTE: SKILL.md / tools.yaml / drift checks are also performed by
-          # the skill-package job (scripts/validate_skill_package.py) for
-          # comprehensive coverage including source_file resolution,
-          # marketplace metadata, version consistency, and no-Maya smoke.
+          echo "✅ No forbidden root-level skill files" >> $GITHUB_STEP_SUMMARY
 
   marketplace-lint:
     name: Lint Marketplace
@@ -278,4 +254,4 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run skill package validation
-        run: python scripts/validate_skill_package.py
+        run: python tools/validate_skill_package.py
