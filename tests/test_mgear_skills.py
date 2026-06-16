@@ -904,6 +904,7 @@ class TestImportShifterSampleTemplate:
 
     def test_imports_sample_template_successfully(self):
         """Successful import returns structured metadata about the imported guide."""
+
         def _constrained_import(filePath):
             return "imported_quadruped_root"
 

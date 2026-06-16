@@ -109,13 +109,14 @@ jobs:
               p = pathlib.Path(tp)
               data = yaml.safe_load(p.read_text())
               tools = data.get('tools', [])
-              assert len(tools) == 5, f'{tp}: Expected 5 tools, got {len(tools)}'
+              assert len(tools) == 6, f'{tp}: Expected 6 tools, got {len(tools)}'
               names = [t['name'] for t in tools]
               assert 'inspect_mgear_environment' in names
               assert 'list_shifter_components' in names
               assert 'create_shifter_guide_from_template' in names
               assert 'build_shifter_rig' in names
               assert 'export_shifter_guide_template' in names
+              assert 'import_shifter_sample_template' in names
               print(f'{tp}: All {len(tools)} tools validated OK: {names}')
           PYEOF
 
