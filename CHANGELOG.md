@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.5.0...dcc-mcp-maya-mgear-v0.6.0) (2026-06-16)
+
+
+### Features
+
+* define canonical DCC-MCP skill repo layout ([2c30806](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/2c308068ff96660655e2035f6a2ba79ada14eb7d))
+* define canonical DCC-MCP skill repo layout ([27a97fa](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/27a97fa2132abb96da77927fb5d4d8bdc0137ebe))
+* define canonical DCC-MCP skill repo layout ([#46](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/46)) ([2c30806](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/2c308068ff96660655e2035f6a2ba79ada14eb7d))
+
+
+### Bug Fixes
+
+* remove unused yaml import in validate_skill_package.py ([e12fdab](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/e12fdabd787767c923df974705deccbe9b5117e4))
+* ruff format (reformat test_package.py and validate_skill_package.py) ([339ea04](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/339ea040fce0c65b08eada3387041dbe8fcb31a5))
+
 ## [0.5.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.5...dcc-mcp-maya-mgear-v0.5.0) (2026-06-16)
 
 
