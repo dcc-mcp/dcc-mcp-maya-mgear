@@ -1,6 +1,6 @@
 tools:
 - name: inspect_mgear_environment
-  description: Read mGear availability, version, key modules, and basic environment diagnostics.
+  description: Read mGear availability, version, key modules, UPV math-node dependency status, and environment diagnostics.
   execution: sync
   affinity: main
   annotations:
@@ -13,7 +13,7 @@ tools:
       verbose:
         type: boolean
         default: false
-        description: Include detailed module paths and diagnostic info.
+        description: Include detailed module paths, UPV math-node status, and extra diagnostic info.
 
 - name: list_shifter_components
   description: List available Shifter component types and guides in the current scene.
