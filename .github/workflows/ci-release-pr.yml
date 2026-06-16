@@ -83,6 +83,7 @@ jobs:
               'version.py',
               '__init__.py',
               'SKILL.md',
+              'marketplace.json',
             ];
             const disallowed = names.filter(
               (name) => !releaseFiles.some((rf) => name.endsWith(rf) || name === rf)

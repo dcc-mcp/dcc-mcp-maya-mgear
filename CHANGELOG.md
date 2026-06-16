@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.5...dcc-mcp-maya-mgear-v0.5.0) (2026-06-16)
+
+
+### Features
+
+* add UPV math-node dependency probe to inspect_mgear_environment ([f103371](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/f103371a7d89ece9820b10be5bb82648786c9159)), closes [#38](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/38)
+
 ## [0.4.5](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.4.4...dcc-mcp-maya-mgear-v0.4.5) (2026-06-15)
 
 
