@@ -154,6 +154,11 @@ jobs:
             exit 1
           fi
 
+          # NOTE: SKILL.md / tools.yaml / drift checks are also performed by
+          # the skill-package job (scripts/validate_skill_package.py) for
+          # comprehensive coverage including source_file resolution,
+          # marketplace metadata, version consistency, and no-Maya smoke.
+
   marketplace-lint:
     name: Lint Marketplace
     runs-on: ubuntu-latest
