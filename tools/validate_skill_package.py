@@ -1,14 +1,14 @@
 """Validate DCC-MCP skill package layout, drift, metadata, and discovery.
 
 This script performs comprehensive CI validation of the skill package:
+- Verify no forbidden root-level skill files exist
 - Lint the canonical SKILL.md manifest and tools.yaml
 - Verify source_file paths resolve inside the installable skill package
-- Verify root/package mirrors do not drift
 - Validate marketplace metadata and version consistency
 - Run a no-Maya discovery/load smoke test
 
 Usage:
-    python scripts/validate_skill_package.py
+    python tools/validate_skill_package.py
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import json
 import pathlib
 import re
 import sys
-from typing import List, Tuple
+from typing import List
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -35,36 +35,17 @@ CANONICAL_MARKETPLACE_JSON = REPO_ROOT / "marketplace.json"
 CANONICAL_SCRIPTS_DIR = SKILL_ROOT / "scripts"
 CANONICAL_DEPENDS_MD = SKILL_ROOT / "metadata" / "depends.md"
 
-# Mirror paths (must match canonical)
-MIRROR_SKILL_MD = REPO_ROOT / "SKILL.md"
-MIRROR_TOOLS_YAML = REPO_ROOT / "tools.yaml"
-MIRROR_SCRIPTS_DIR = REPO_ROOT / "scripts"
-MIRROR_DEPENDS_MD = REPO_ROOT / "metadata" / "depends.md"
-MIRROR_MARKETPLACE_DIR = REPO_ROOT / "marketplace"
-MIRROR_MARKETPLACE_PKG = REPO_ROOT / "dcc-mcp-maya-mgear" / "marketplace.json"
+# Forbidden root-level paths (must NOT exist)
+FORBIDDEN_ROOT_PATHS: List[pathlib.Path] = [
+    REPO_ROOT / "SKILL.md",
+    REPO_ROOT / "tools.yaml",
+    REPO_ROOT / "metadata" / "depends.md",
+    REPO_ROOT / "scripts",
+]
 
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 RELEASE_PLEASE_MANIFEST = REPO_ROOT / ".release-please-manifest.json"
 ICON_PNG = REPO_ROOT / "icon.png"
-
-# Files that are exact mirrors of the canonical (content must match byte-for-byte)
-EXACT_MIRRORS: List[Tuple[pathlib.Path, pathlib.Path, str]] = [
-    (CANONICAL_SKILL_MD, MIRROR_SKILL_MD, "SKILL.md (root)"),
-    (CANONICAL_TOOLS_YAML, MIRROR_TOOLS_YAML, "tools.yaml (root)"),
-    (CANONICAL_DEPENDS_MD, MIRROR_DEPENDS_MD, "metadata/depends.md (root)"),
-]
-
-# marketplace.json mirrors (only dcc-mcp-maya-mgear/ copy is expected to match)
-MARKETPLACE_MIRRORS: List[Tuple[pathlib.Path, pathlib.Path, str]] = [
-    (CANONICAL_MARKETPLACE_JSON, MIRROR_MARKETPLACE_PKG, "dcc-mcp-maya-mgear/marketplace.json"),
-]
-
-# Script mirrors — each script must match byte-for-byte
-SCRIPT_MIRRORS: List[Tuple[pathlib.Path, pathlib.Path, str]] = []
-for _script in sorted(CANONICAL_SCRIPTS_DIR.glob("*.py")):
-    _name = _script.name
-    _mirror = MIRROR_SCRIPTS_DIR / _name
-    SCRIPT_MIRRORS.append((_script, _mirror, f"scripts/{_name} (root)"))
 
 # tools.yaml required tool names
 REQUIRED_TOOLS = [
@@ -103,7 +84,33 @@ def _read_yaml(path: pathlib.Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Check 1: File existence
+# Check 1: No forbidden root-level skill files
+# ---------------------------------------------------------------------------
+
+def check_no_root_skill_files() -> None:
+    """Verify no forbidden skill files exist at repo root.
+
+    The canonical path for all skill files is skill/maya-mgear/.
+    Root-level SKILL.md, tools.yaml, metadata/depends.md, and scripts/
+    are forbidden — they create drift and maintenance burden.
+    """
+    errors = []
+    for p in FORBIDDEN_ROOT_PATHS:
+        if p.exists():
+            errors.append(f"Forbidden root-level path exists: {p.relative_to(REPO_ROOT)}")
+
+    if errors:
+        print("  Forbidden root-level skill files detected:")
+        for e in errors:
+            print(f"    ERROR: {e}")
+        _fail(
+            "Root-level skill files are forbidden. The canonical path is skill/maya-mgear/."
+        )
+    print(f"  [OK] No forbidden root-level skill files ({len(FORBIDDEN_ROOT_PATHS)} paths checked)")
+
+
+# ---------------------------------------------------------------------------
+# Check 2: File existence
 # ---------------------------------------------------------------------------
 
 def check_files_exist() -> None:
@@ -124,7 +131,7 @@ def check_files_exist() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Check 2: SKILL.md lint
+# Check 3: SKILL.md lint
 # ---------------------------------------------------------------------------
 
 def check_skill_md() -> None:
@@ -182,7 +189,7 @@ def check_skill_md() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Check 3: tools.yaml lint + source_file resolution
+# Check 4: tools.yaml lint + source_file resolution
 # ---------------------------------------------------------------------------
 
 def check_tools_yaml() -> None:
@@ -218,52 +225,6 @@ def check_tools_yaml() -> None:
                 _fail(f"Tool '{name}' has no source_file and no script at scripts/{name}.py")
 
     print(f"  [OK] tools.yaml: {len(tools)} tools validated, all source paths resolved")
-
-
-# ---------------------------------------------------------------------------
-# Check 4: Drift detection
-# ---------------------------------------------------------------------------
-
-def check_drift() -> None:
-    """Verify all mirror files match their canonical counterparts."""
-    errors = []
-
-    # Exact mirrors (byte-for-byte)
-    for canonical, mirror, label in EXACT_MIRRORS:
-        if not mirror.is_file():
-            errors.append(f"{label}: mirror file missing at {mirror.relative_to(REPO_ROOT)}")
-            continue
-        can_content = canonical.read_bytes()
-        mir_content = mirror.read_bytes()
-        if can_content != mir_content:
-            errors.append(f"{label}: content differs from canonical {canonical.relative_to(REPO_ROOT)}")
-
-    # Script mirrors
-    for canonical, mirror, label in SCRIPT_MIRRORS:
-        if not mirror.is_file():
-            errors.append(f"{label}: mirror file missing at {mirror.relative_to(REPO_ROOT)}")
-            continue
-        can_content = canonical.read_bytes()
-        mir_content = mirror.read_bytes()
-        if can_content != mir_content:
-            errors.append(f"{label}: content differs from canonical {canonical.relative_to(REPO_ROOT)}")
-
-    # marketplace.json mirrors
-    for canonical, mirror, label in MARKETPLACE_MIRRORS:
-        if not mirror.is_file():
-            errors.append(f"{label}: mirror file missing at {mirror.relative_to(REPO_ROOT)}")
-            continue
-        can_content = canonical.read_bytes()
-        mir_content = mirror.read_bytes()
-        if can_content != mir_content:
-            errors.append(f"{label}: content differs from canonical {canonical.relative_to(REPO_ROOT)}")
-
-    if errors:
-        print("  Drift detected:")
-        for e in errors:
-            print(f"    ERROR: {e}")
-        _fail("Drift detected — update mirror files to match canonical")
-    print(f"  [OK] All mirrors match canonical ({len(EXACT_MIRRORS) + len(SCRIPT_MIRRORS) + len(MARKETPLACE_MIRRORS)} files checked)")
 
 
 # ---------------------------------------------------------------------------
@@ -362,10 +323,10 @@ def main() -> None:
     print()
 
     checks = [
-        ("Check 1: File existence", check_files_exist),
-        ("Check 2: SKILL.md lint", check_skill_md),
-        ("Check 3: tools.yaml lint + source_file resolution", check_tools_yaml),
-        ("Check 4: Drift detection (root vs nested mirrors)", check_drift),
+        ("Check 1: No forbidden root-level skill files", check_no_root_skill_files),
+        ("Check 2: File existence", check_files_exist),
+        ("Check 3: SKILL.md lint", check_skill_md),
+        ("Check 4: tools.yaml lint + source_file resolution", check_tools_yaml),
         ("Check 5: Version consistency", check_version_consistency),
         ("Check 6: No-Maya discovery/load smoke", check_discovery_smoke),
     ]
