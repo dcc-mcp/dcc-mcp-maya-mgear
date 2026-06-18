@@ -174,7 +174,9 @@ def import_shifter_sample_template(
         file_path = _find_template_path(template_name)
         if file_path is None:
             return skill_error(
-                "Sample template '{}' not found in mGear installation".format(template_name),
+                "Sample template '{}' not found in mGear installation".format(
+                    template_name
+                ),
                 "File not found: {}".format(template_name),
                 prompt=(
                     "Verify the template name. Common samples include: "
