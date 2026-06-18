@@ -8,41 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }} / ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Run tests
-        run: >
-          pytest tests/
-          -v --tb=short
-          --cov=src --cov-report=xml --cov-report=term
-
-      - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v6
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -58,10 +23,10 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check src/ tests/ tools/
+        run: ruff check skill/
 
       - name: Run ruff format check
-        run: ruff format --check src/ tests/ tools/
+        run: ruff format --check skill/
 
   skill-lint:
     name: Lint Skills
@@ -248,10 +213,59 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - name: Install PyYAML
+        run: pip install pyyaml
 
-      - name: Run skill package validation
-        run: python tools/validate_skill_package.py
+      - name: Validate skill package layout
+        run: |
+          python << 'PYEOF'
+          import yaml, pathlib, sys
+
+          CANONICAL = pathlib.Path('skill/maya-mgear')
+          errors = []
+
+          # SKILL.md must exist and have required frontmatter
+          skill_md = CANONICAL / 'SKILL.md'
+          if not skill_md.is_file():
+              errors.append(f'{skill_md}: missing')
+          else:
+              data = None
+              for doc in yaml.safe_load_all(skill_md.read_text()):
+                  if doc is not None:
+                      data = doc
+                      break
+              if data is None or data.get('name') != 'maya-mgear':
+                  errors.append(f'{skill_md}: missing or wrong name in frontmatter')
+
+          # tools.yaml must exist and list exactly 6 tools
+          tools_yaml = CANONICAL / 'tools.yaml'
+          if not tools_yaml.is_file():
+              errors.append(f'{tools_yaml}: missing')
+          else:
+              data = yaml.safe_load(tools_yaml.read_text())
+              tools = data.get('tools', [])
+              if len(tools) != 6:
+                  errors.append(f'{tools_yaml}: expected 6 tools, got {len(tools)}')
+
+          # metadata/depends.md must exist
+          depends_md = CANONICAL / 'metadata' / 'depends.md'
+          if not depends_md.is_file():
+              errors.append(f'{depends_md}: missing')
+
+          # scripts/ must contain .py files
+          scripts_dir = CANONICAL / 'scripts'
+          if not scripts_dir.is_dir():
+              errors.append(f'{scripts_dir}: missing')
+          else:
+              py_files = list(scripts_dir.glob('*.py'))
+              if not py_files:
+                  errors.append(f'{scripts_dir}: no Python scripts found')
+
+          if errors:
+              print('Skill package validation FAILED:')
+              for e in errors:
+                  print(f'  - {e}')
+              sys.exit(1)
+
+          print(f'Skill package OK: {CANONICAL}')
+          PYEOF
