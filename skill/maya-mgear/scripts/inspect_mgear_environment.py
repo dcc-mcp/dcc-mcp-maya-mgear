@@ -96,7 +96,9 @@ def _check_upv_plugin_state() -> Dict[str, str]:
     return result
 
 
-def _compute_upv_warnings(shifter_available: bool, upv_nodes: Dict[str, str]) -> List[str]:
+def _compute_upv_warnings(
+    shifter_available: bool, upv_nodes: Dict[str, str]
+) -> List[str]:
     """Build user-facing warnings about UPV math-node availability."""
     warnings: List[str] = []
     if not shifter_available:
@@ -146,7 +148,11 @@ def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
                 if hasattr(mgear, "__path__")
                 else [getattr(mgear, "__file__", "")]
             )
-            context["mgear_path"] = list(mgear_path) if isinstance(mgear_path, (list, tuple)) else str(mgear_path)
+            context["mgear_path"] = (
+                list(mgear_path)
+                if isinstance(mgear_path, (list, tuple))
+                else str(mgear_path)
+            )
 
             if verbose:
                 key_modules: Dict[str, bool] = {}
@@ -184,7 +190,9 @@ def inspect_mgear_environment(verbose: bool = False) -> Dict[str, Any]:
             )
         elif mgear_available:
             return skill_success(
-                "mGear {} found but Shifter module is not available".format(context.get("version", "")),
+                "mGear {} found but Shifter module is not available".format(
+                    context.get("version", "")
+                ),
                 **context,
                 prompt="Verify mgear.shifter is installed or check your mGear installation.",
             )
