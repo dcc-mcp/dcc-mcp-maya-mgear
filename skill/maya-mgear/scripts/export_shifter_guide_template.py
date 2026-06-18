@@ -42,10 +42,16 @@ def _export_template(
 
     ok = _select_guide(guide_name)
     if not ok:
-        return {"guide_name": guide_name, "error": "Guide '{}' not found in scene".format(guide_name)}
+        return {
+            "guide_name": guide_name,
+            "error": "Guide '{}' not found in scene".format(guide_name),
+        }
 
     meta = {"include_metadata": include_metadata}
-    result: Dict[str, Any] = {"guide_name": guide_name, "include_metadata": include_metadata}
+    result: Dict[str, Any] = {
+        "guide_name": guide_name,
+        "include_metadata": include_metadata,
+    }
 
     if output_path:
         shifter_io.export_guide_template(filePath=output_path, meta=meta)
@@ -103,7 +109,9 @@ def export_shifter_guide_template(
             msg = "Exported template to {}".format(output_path)
             return skill_success(msg, **result)
         else:
-            has_base64 = "template_base64" in result and result["template_base64"] is not None
+            has_base64 = (
+                "template_base64" in result and result["template_base64"] is not None
+            )
             if has_base64:
                 b64_len = len(result["template_base64"])
                 msg = "Exported template as base64 ({} chars)".format(b64_len)
