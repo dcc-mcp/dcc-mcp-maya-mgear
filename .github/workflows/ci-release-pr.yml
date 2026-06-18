@@ -79,10 +79,6 @@ jobs:
             const releaseFiles = [
               '.release-please-manifest.json',
               'CHANGELOG.md',
-              'pyproject.toml',
-              'version.py',
-              '__init__.py',
-              'SKILL.md',
               'marketplace.json',
             ];
             const disallowed = names.filter(

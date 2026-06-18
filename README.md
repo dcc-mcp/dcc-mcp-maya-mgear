@@ -16,22 +16,15 @@ skill/maya-mgear/       ← canonical installable skill package
 ├── metadata/depends.md
 └── scripts/            ← 6 mGear tools
 
-marketplace.json        ← marketplace catalog entry (root only)
-icon.png
-src/
-tests/
-tools/                  ← CI validation scripts
-README.md
-pyproject.toml
-.github/workflows/      ← CI enforced: no root skill files
+marketplace.json        ← marketplace catalog entry
+icon.png                ← marketplace icon
+.github/workflows/      ← CI/CD
 ```
 
 ### Key Rules
 
 - `skill/maya-mgear/` is the **only** canonical path for SKILL.md, tools.yaml,
   metadata/, and scripts/. No duplicates anywhere else.
-- Root-level SKILL.md, tools.yaml, metadata/, and scripts/ are **forbidden**.
-  CI fails if anyone adds them back.
 - `marketplace.json` and `icon.png` live at the repo root — they are catalog
   metadata, not skill runtime files.
 
@@ -67,21 +60,6 @@ the skill is automatically registered with the running Maya adapter.
 - [dcc-mcp-maya](https://github.com/dcc-mcp/dcc-mcp-maya) installed and configured
 - [mGear Shifter](https://github.com/mgear-dev/mgear) installed and accessible from Maya
 - dcc-mcp-core >= 0.18.2
-
-## Contributing
-
-This is a standalone skill repo. See [CONTRIBUTING.md](https://github.com/dcc-mcp/marketplace/blob/main/CONTRIBUTING.md) in the marketplace repo for how to propose changes.
-
-```bash
-# Dev setup
-pip install -e ".[dev]"
-
-# Lint
-ruff check . && ruff format --check .
-
-# Test (91 tests, 6 tools, 3 OS x 5 Python on CI)
-pytest tests/ -v
-```
 
 ## Related
 
