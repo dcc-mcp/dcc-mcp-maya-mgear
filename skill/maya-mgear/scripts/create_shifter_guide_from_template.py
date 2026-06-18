@@ -50,7 +50,7 @@ def _get_existing_guide_paths() -> Set[str]:
 
     existing: Set[str] = set()
     try:
-        for node in (cmds.ls(type="transform", long=True) or []):
+        for node in cmds.ls(type="transform", long=True) or []:
             try:
                 is_gear = cmds.attributeQuery("isGearGuide", node=node, exists=True)
                 is_model = cmds.attributeQuery("ismodel", node=node, exists=True)
@@ -72,7 +72,7 @@ def _get_new_nodes(previous: Set[str]) -> List[str]:
 
     created: List[str] = []
     try:
-        for node in (cmds.ls(type="transform", long=True) or []):
+        for node in cmds.ls(type="transform", long=True) or []:
             if node in previous:
                 continue
             try:
@@ -146,7 +146,9 @@ def _create_guide(
             "position": pos,
             "node": final_name,
             "guide_root": guide_root,
-            "created_nodes": [n.split("|")[-1] for n in new_nodes] if new_nodes else [final_name],
+            "created_nodes": [n.split("|")[-1] for n in new_nodes]
+            if new_nodes
+            else [final_name],
         }
         return result
 
@@ -217,21 +219,29 @@ def create_shifter_guide_from_template(
 
         if result.get("node"):
             return skill_success(
-                "Created guide '{}' from template '{}'".format(result["node"], template),
+                "Created guide '{}' from template '{}'".format(
+                    result["node"], template
+                ),
                 **result,
                 prompt="Use build_shifter_rig to generate the rig from this guide.",
             )
         else:
             return skill_error(
-                "Failed to create guide '{}' — no guide nodes were created".format(guide_name),
-                "draw_comp('{}') returned None and no new guide nodes found in scene".format(template),
+                "Failed to create guide '{}' — no guide nodes were created".format(
+                    guide_name
+                ),
+                "draw_comp('{}') returned None and no new guide nodes found in scene".format(
+                    template
+                ),
                 prompt="Verify the component type '{}' is valid. Use list_shifter_components to see available types.".format(
                     template
                 ),
                 component_type=template,
             )
     except Exception as exc:
-        return skill_exception(exc, message="Failed to create Shifter guide from template")
+        return skill_exception(
+            exc, message="Failed to create Shifter guide from template"
+        )
 
 
 @skill_entry

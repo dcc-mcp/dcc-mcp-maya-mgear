@@ -54,7 +54,9 @@ def _get_scene_guides(include_guides: bool = True) -> List[Dict[str, Any]]:
         all_transforms = cmds.ls(type="transform", long=True) or []
         for node in all_transforms:
             try:
-                is_gear_guide = cmds.attributeQuery("isGearGuide", node=node, exists=True)
+                is_gear_guide = cmds.attributeQuery(
+                    "isGearGuide", node=node, exists=True
+                )
                 is_model = cmds.attributeQuery("ismodel", node=node, exists=True)
                 has_comp_type = cmds.attributeQuery("comp_type", node=node, exists=True)
 
@@ -105,7 +107,9 @@ def list_shifter_components(
         component_names = [str(c) for c in components]
 
         if component_type:
-            component_names = [c for c in component_names if component_type.lower() in c.lower()]
+            component_names = [
+                c for c in component_names if component_type.lower() in c.lower()
+            ]
 
         guides = _get_scene_guides(include_guides)
 
