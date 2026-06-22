@@ -10,20 +10,25 @@ templates through typed MCP tools.
 ## Repository Layout
 
 ```
-skill/maya-mgear/       ← canonical installable skill package
+skill/maya-mgear/               ← canonical installable skill package
 ├── SKILL.md
 ├── tools.yaml
 ├── metadata/depends.md
-└── scripts/            ← 6 mGear tools
+└── scripts/                    ← 6 mGear tools
+skill/mgear-import-to-scene/    ← import-to-scene skill package
+├── SKILL.md
+├── tools.yaml
+├── metadata/depends.md
+└── scripts/                    ← 1 import tool
 
-marketplace.json        ← marketplace catalog entry
-icon.png                ← marketplace icon
-.github/workflows/      ← CI/CD
+marketplace.json                ← marketplace catalog entry
+icon.png                        ← marketplace icon
+.github/workflows/              ← CI/CD
 ```
 
 ### Key Rules
 
-- `skill/maya-mgear/` is the **only** canonical path for SKILL.md, tools.yaml,
+- `skill/maya-mgear/` and `skill/mgear-import-to-scene/` are the **only** canonical paths for SKILL.md, tools.yaml,
   metadata/, and scripts/. No duplicates anywhere else.
 - `marketplace.json` and `icon.png` live at the repo root — they are catalog
   metadata, not skill runtime files.
@@ -42,8 +47,11 @@ the skill is automatically registered with the running Maya adapter.
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `maya-mgear` | 6 | Inspect, list, create, build, export, and import mGear Shifter components |
+| `mgear-import-to-scene` | 1 | Import mGear rigs into the Maya scene via an AssetDescriptor contract |
 
 ### Tools
+
+#### maya-mgear
 
 | Tool | Description |
 |------|-------------|
@@ -53,6 +61,12 @@ the skill is automatically registered with the running Maya adapter.
 | `build_shifter_rig` | Build a rig from an existing Shifter guide |
 | `export_shifter_guide_template` | Export a guide or component as a reusable template |
 | `import_shifter_sample_template` | Import an official sample template (e.g. quadruped.sgt) with structured metadata |
+
+#### mgear-import-to-scene
+
+| Tool | Description |
+|------|-------------|
+| `mgear_import_to_scene` | Import an mGear rig into the scene from a file path with optional loader configuration |
 
 ## Prerequisites
 
