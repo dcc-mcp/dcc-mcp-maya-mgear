@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.7.0...dcc-mcp-maya-mgear-v0.7.1) (2026-06-22)
+
+
+### Documentation
+
+* add mgear-import-to-scene skill to README ([df9d3c2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/df9d3c2f5b93d94102687f4b721ee7ae636d9d9c))
+* register mgear-import-to-scene skill in README. ([df9d3c2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/df9d3c2f5b93d94102687f4b721ee7ae636d9d9c))
+
 ## [0.7.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.6.0...dcc-mcp-maya-mgear-v0.7.0) (2026-06-21)
 
 
