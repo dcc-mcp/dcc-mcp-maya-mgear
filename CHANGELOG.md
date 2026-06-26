@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.6.0...dcc-mcp-maya-mgear-v0.7.0) (2026-06-26)
+
+
+### Features
+
+* initial scaffold for dcc-mcp-maya-mgear ([ade0818](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/ade081859526017b08f7af0510479e52d3a2fb98))
+
+
+### Bug Fixes
+
+* **ci:** add release-please branches to push trigger ([19fe989](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/19fe9895f69e399b71aca770fe73eedd797c2599))
+
 ## [0.6.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.5.0...dcc-mcp-maya-mgear-v0.6.0) (2026-06-16)
 
 
