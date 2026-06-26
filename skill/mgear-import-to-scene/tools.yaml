@@ -1,0 +1,63 @@
+tools:
+- name: mgear_import_to_scene
+  description: >
+    Import an asset file (FBX, OBJ, USD, USDZ, GLTF, GLB, ABC) into the current
+    Maya scene with mGear rigging context awareness. Accepts a structured
+    AssetDescriptor per the dcc_mcp_core.asset_import contract, applies
+    material mode, placement hints, and optional display layer assignment.
+    After import, probes the mGear environment and reports rigging-relevant
+    context so downstream agents understand what rigging components are
+    available in the scene.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - descriptor
+    properties:
+      descriptor:
+        type: object
+        description: >
+          Asset descriptor per the dcc_mcp_core.asset_import contract.
+          Must include 'asset_id' (str) and 'variants' (list of dicts with
+          at least 'local_path'). See AssetDescriptor from dcc_mcp_core.
+      material_mode:
+        type: string
+        default: as_authored
+        enum:
+        - as_authored
+        - default_gray
+        - skip
+        description: Material import strategy.
+      placement:
+        type: object
+        description: Optional placement hint (translate, rotate, scale, parent_name).
+        properties:
+          translate:
+            type: array
+            items:
+              type: number
+            minItems: 3
+            maxItems: 3
+          rotate:
+            type: array
+            items:
+              type: number
+            minItems: 3
+            maxItems: 3
+          scale:
+            type: array
+            items:
+              type: number
+            minItems: 3
+            maxItems: 3
+          parent_name:
+            type: string
+      target_collection:
+        type: string
+        description: Optional Maya display layer name for the imported asset.
+      skip_existing:
+        type: boolean
+        default: false
+        description: Skip import if asset_id is already present in the scene.
