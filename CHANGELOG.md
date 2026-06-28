@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.7.0...dcc-mcp-maya-mgear-v0.7.1) (2026-06-22)
+
+
+### Documentation
+
+* add mgear-import-to-scene skill to README ([df9d3c2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/df9d3c2f5b93d94102687f4b721ee7ae636d9d9c))
+* register mgear-import-to-scene skill in README. ([df9d3c2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/df9d3c2f5b93d94102687f4b721ee7ae636d9d9c))
+
+## [0.7.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.6.0...dcc-mcp-maya-mgear-v0.7.0) (2026-06-21)
+
+
+### Features
+
+* add mgear-import-to-scene skill (PIP-1896) ([dccd75e](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/dccd75eedf7c445a73ad747d231e09a270b0aa60))
+* add mgear-import-to-scene skill with contract-aligned import and mGear context probe ([0db1337](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/0db1337332afb2ef0c2d9f4158ee6fac7e23864d))
+
 ## [0.6.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.5.0...dcc-mcp-maya-mgear-v0.6.0) (2026-06-16)
 
 

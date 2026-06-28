@@ -5,7 +5,7 @@ license: MIT
 compatibility: "dcc-mcp-core 0.18+"
 metadata:
   dcc-mcp:
-    version: v0.6.0
+    version: v0.7.1
     dcc: maya
     layer: domain
     tags:
