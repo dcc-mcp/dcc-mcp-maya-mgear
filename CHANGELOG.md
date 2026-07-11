@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.0...dcc-mcp-maya-mgear-v0.8.1) (2026-07-11)
+
+
+### Documentation
+
+* add workflow showcase ([#58](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/58)) ([d4489ac](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/d4489ac87095479695054254fcb5d5f65ddd7c55))
+* optimize workflow showcase ([#60](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/60)) ([693c08d](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/693c08d9f52c300d1bb55f5bbeb429bf47e06950))
+
 ## [0.8.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.7.1...dcc-mcp-maya-mgear-v0.8.0) (2026-06-28)
 
 
