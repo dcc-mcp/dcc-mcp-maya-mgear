@@ -1,5 +1,7 @@
 # dcc-mcp-maya-mgear
 
+![Workflow showcase](docs/workflow-showcase.png)
+
 [![Marketplace](https://img.shields.io/badge/dcc--mcp-marketplace-orange)](https://github.com/dcc-mcp/marketplace)
 [![DCC](https://img.shields.io/badge/dcc-maya-blue)](https://github.com/dcc-mcp/dcc-mcp-maya)
 
