@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.1...dcc-mcp-maya-mgear-v0.8.2) (2026-07-19)
+
+
+### Documentation
+
+* align agent workflow and branding ([591332d](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/591332d6c76af34e30dc24f26c6a4aa2940485f3))
+* document CLI install and updates ([f1b0266](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/f1b0266cff26d4779584e201ef260db2bda7c04d))
+
 ## [0.8.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.0...dcc-mcp-maya-mgear-v0.8.1) (2026-07-11)
 
 
