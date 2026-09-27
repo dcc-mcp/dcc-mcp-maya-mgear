@@ -55,9 +55,12 @@ def test_export_fbx_reads_back_bytes_and_metrics(
     assert ctx["control_count"] == 2
     assert ctx["mesh_count"] == 1
     assert ctx["keyframe_count"] == 240
-    assert ctx["start_frame"] == 1.0
-    assert ctx["end_frame"] == 120.0
+    assert ctx["start_frame"] == 1
+    assert ctx["end_frame"] == 120
     assert ctx["frame_range_source"] == "timeline"
+    # The keyframe query must walk the hierarchy, otherwise an animated rig
+    # reports zero keys.
+    assert biped_scene.keyframe_calls[0]["hierarchy"] == "below"
     assert ctx["mgear"]["available"] is True
     assert ctx["mgear"]["version"] == "5.2.1"
 
@@ -117,8 +120,8 @@ def test_export_fbx_honours_explicit_frame_range_and_bake(
     )
 
     assert result["success"] is True, result
-    assert _ctx(result)["start_frame"] == 10.0
-    assert _ctx(result)["end_frame"] == 48.0
+    assert _ctx(result)["start_frame"] == 10
+    assert _ctx(result)["end_frame"] == 48
     assert _ctx(result)["frame_range_source"] == "explicit"
     commands = [c[0][0] for c in mel.eval.call_args_list]
     assert "FBXExportBakeComplexAnimation -v 0;" in commands
@@ -197,11 +200,74 @@ def test_export_abc_builds_job_string(
     assert ctx["file_format"] == "abc"
     assert ctx["file_size_bytes"] == target.stat().st_size > 0
     job = cmds.AbcExport.call_args[1]["j"]
+    target_posix = str(target).replace("\\", "/")
     assert "-frameRange 1 120" in job
-    assert "-root |biped_rig" in job
-    assert "-file {}".format(str(target).replace("\\", "/")) in job
+    # The job string is split on whitespace, so both values must be quoted.
+    assert '-root "|biped_rig"' in job
+    assert '-file "{}"'.format(target_posix) in job
     # Alembic takes the roots explicitly; it must not depend on the selection.
     assert not any(c[0][0].startswith("FBXExport -f") for c in mel.eval.call_args_list)
+
+
+def test_export_abc_quotes_paths_with_spaces(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    cmds, _mel = make_maya(monkeypatch, biped_scene)
+    spaced = tmp_path / "My Rig" / "biped.abc"
+
+    result = script.export_shifter_rig(str(spaced), file_format="abc")
+
+    assert result["success"] is True, result
+    job = cmds.AbcExport.call_args[1]["j"]
+    # Splitting the job on whitespace must still yield the whole path.
+    assert '-file "{}"'.format(str(spaced).replace("\\", "/")) in job
+    assert (tmp_path / "My Rig" / "biped.abc").is_file()
+
+
+def test_export_keyframe_count_handles_scalar_and_list(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    cmds, _mel = make_maya(monkeypatch, biped_scene)
+    target = tmp_path / "keys.fbx"
+
+    # Maya returns a scalar for one target and a list for several.
+    for raw, expected in ((240, 240), ([120, 120], 240), (None, 0)):
+        monkeypatch.setattr(cmds, "keyframe", lambda *_a, **_k: raw)
+        result = script.export_shifter_rig(str(target))
+        assert result["success"] is True, result
+        assert _ctx(result)["keyframe_count"] == expected, (
+            raw,
+            _ctx(result)["keyframe_count"],
+        )
+
+
+def test_export_restores_the_artists_selection(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    scene = FakeScene(
+        nodes={
+            "|biped_rig": "transform",
+            "|biped_rig|root_Jnt": "joint",
+            "|thing_i_had_selected": "transform",
+        },
+        attrs={"|biped_rig": ("is_rig",)},
+        selection=["|thing_i_had_selected"],
+    )
+    make_maya(monkeypatch, scene)
+
+    result = script.export_shifter_rig(str(tmp_path / "sel.fbx"))
+
+    assert result["success"] is True, result
+    assert scene.selection == ["|thing_i_had_selected"]
+    assert _ctx(result)["selection_restored"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +294,7 @@ def test_export_empty_file_path_returns_error(
     result = script.export_shifter_rig("   ")
 
     assert result["success"] is False
-    assert result["error"] == "file_path is required"
+    assert result["error"] == "missing_file_path"
 
 
 def test_export_unsupported_format_returns_error(
@@ -289,6 +355,48 @@ def test_export_empty_file_is_a_failure(
     assert result["error"] == "empty_export"
     assert ctx["file_exists"] is False
     assert ctx["file_size_bytes"] == 0
+
+
+def test_export_rejects_a_stale_file_from_a_previous_run(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    """A file left by an earlier export must not satisfy the read-back.
+
+    MEL reports exporter errors without raising, so without this guard a
+    silently failed run would return success with the previous file's size.
+    """
+    make_maya(monkeypatch, biped_scene, write_on_fbx=False)
+    target = tmp_path / "stale.fbx"
+    target.write_bytes(b"previous export")
+
+    result = script.export_shifter_rig(str(target))
+
+    assert result["success"] is False
+    ctx = _ctx(result)
+    assert result["error"] == "empty_export"
+    # The stale file must have been deleted, not read back as evidence.
+    assert ctx["file_exists"] is False
+    assert not target.exists()
+
+
+def test_export_succeeds_when_the_stale_file_is_replaced(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    make_maya(monkeypatch, biped_scene, fbx_bytes=b"fresh export")
+    target = tmp_path / "stale.fbx"
+    target.write_bytes(b"previous export")
+
+    result = script.export_shifter_rig(str(target))
+
+    assert result["success"] is True, result
+    assert target.read_bytes() == b"fresh export"
+    assert _ctx(result)["file_size_bytes"] == len(b"fresh export")
 
 
 def test_export_reports_advisory_mgear_context_when_absent(

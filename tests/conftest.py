@@ -9,6 +9,7 @@ swallowed by a permissive mock.
 from __future__ import annotations
 
 import importlib.util
+import shlex as _shlex
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -52,10 +53,18 @@ class FakeScene:
         self.selection = list(selection or [])
         self.keyframe_count = keyframe_count
         self.select_calls: List[Any] = []
+        self.keyframe_calls: List[Dict[str, Any]] = []
 
     # -- maya.cmds API surface used by the scripts -------------------------
     def objExists(self, name: str) -> bool:
         return str(name) in self.nodes or "|{}".format(name) in self.nodes
+
+    def _expand(self, name: str) -> str:
+        """Resolve a short DAG name the way Maya does (``rig`` -> ``|rig``)."""
+        if name in self.nodes:
+            return name
+        alt = "|" + str(name).lstrip("|")
+        return alt if alt in self.nodes else str(name)
 
     def ls(self, *args: Any, **kwargs: Any) -> List[str]:
         if kwargs.get("selection"):
@@ -74,7 +83,14 @@ class FakeScene:
                         matched.append(node)
             return matched
 
-        roots = [a for a in args if isinstance(a, str)]
+        # Maya accepts both ``ls("a", "b")`` and ``ls(["a", "b"])".
+        flat: List[str] = []
+        for arg in args:
+            if isinstance(arg, (list, tuple)):
+                flat.extend(str(a) for a in arg)
+            elif isinstance(arg, str):
+                flat.append(arg)
+        roots = [self._expand(a) for a in flat]
         if roots:
             if not kwargs.get("dag"):
                 return [r for r in roots if r in self.nodes]
@@ -101,11 +117,23 @@ class FakeScene:
     def loadPlugin(self, _plugin: str) -> None:
         return None
 
-    def keyframe(self, *_args: Any, **_kwargs: Any) -> float:
+    def keyframe(self, *_args: Any, **kwargs: Any) -> Any:
+        # Maya returns a scalar for one target and a list of per-target counts
+        # for several; the list form is the one that breaks naive int().
+        self.keyframe_calls.append(dict(kwargs))
+        if kwargs.get("hierarchy"):
+            return [self.keyframe_count]
         return self.keyframe_count
 
     def select(self, *args: Any, **kwargs: Any) -> None:
         self.select_calls.append((args, kwargs))
+        if kwargs.get("clear"):
+            self.selection = []
+            return
+        if args and isinstance(args[0], (list, tuple)):
+            self.selection = list(args[0])
+        elif args and isinstance(args[0], str):
+            self.selection = [args[0]]
         if args and isinstance(args[0], str) and not self.objExists(args[0]):
             # Real maya.cmds.select raises when nothing matches the name.
             raise RuntimeError("No object matches name: {}".format(args[0]))
@@ -139,7 +167,9 @@ def make_maya(
 
     def _write_abc(**kwargs: Any) -> None:
         job = str(kwargs.get("j", ""))
-        parts = job.split()
+        # Split the job the way a shell would, so quoted values containing
+        # spaces stay whole — that is the contract under test.
+        parts = [p.strip('"') for p in _shlex.split(job, posix=False)]
         path = parts[parts.index("-file") + 1] if "-file" in parts else ""
         if write_on_abc and path:
             Path(path).write_bytes(abc_bytes)

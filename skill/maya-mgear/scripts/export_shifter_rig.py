@@ -219,13 +219,36 @@ def _collect_metrics(cmds: Any, roots: List[str]) -> Dict[str, int]:
         return metrics
 
     try:
-        metrics["keyframe_count"] = int(
-            cmds.keyframe(*roots, query=True, keyframeCount=True) or 0
+        metrics["keyframe_count"] = _coerce_keyframe_count(
+            cmds.keyframe(*roots, query=True, keyframeCount=True, hierarchy="below")
         )
     except Exception:  # noqa: BLE001 - unanimated rigs have no keyframes
         metrics["keyframe_count"] = 0
 
     return metrics
+
+
+def _coerce_keyframe_count(raw: Any) -> int:
+    """Normalise ``cmds.keyframe(keyframeCount=True)`` to a single integer.
+
+    Maya returns a scalar for one target and a list of per-target counts for
+    several, so ``int(raw)`` alone would raise ``TypeError`` on the list form
+    and silently report zero keyframes for an animated rig.
+    """
+    if raw is None:
+        return 0
+    if isinstance(raw, (list, tuple)):
+        total = 0
+        for item in raw:
+            try:
+                total += int(item)
+            except (TypeError, ValueError):
+                continue
+        return total
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _resolve_frame_range(
@@ -248,6 +271,49 @@ def _resolve_frame_range(
     return sf, ef, "timeline"
 
 
+def _current_selection(cmds: Any) -> List[str]:
+    """Snapshot the current Maya selection (best effort)."""
+    try:
+        return list(cmds.ls(selection=True, long=True) or [])
+    except Exception:  # noqa: BLE001 - selection is cosmetic, never fatal
+        return []
+
+
+def _restore_selection(cmds: Any, selection: List[str]) -> None:
+    """Put back what :func:`_current_selection` captured.
+
+    Exporting must not silently drop the artist's selection.
+    """
+    try:
+        if selection:
+            existing = [n for n in selection if cmds.objExists(n)]
+            cmds.select(existing, replace=True)
+        else:
+            cmds.select(clear=True)
+    except Exception:  # noqa: BLE001 - never fail an export over this
+        pass
+
+
+def _discard_previous_export(file_path: str) -> Optional[float]:
+    """Delete a stale file at *file_path* so the read-back cannot hit it.
+
+    Returns the previous mtime when the file existed, so a file that could
+    not be deleted can still be detected as unchanged after the export.
+    """
+    try:
+        if not os.path.isfile(file_path):
+            return None
+        prior_mtime = os.path.getmtime(file_path)
+    except OSError:
+        return None
+    try:
+        os.remove(file_path)
+    except OSError:
+        # Locked / read-only: keep the mtime and compare after the export.
+        pass
+    return prior_mtime
+
+
 def _export_fbx(
     mel: Any,
     file_path: str,
@@ -262,6 +328,16 @@ def _export_fbx(
     mel.eval('FBXExport -f "{}" -s;'.format(file_path))
 
 
+def _quote_job_value(value: str) -> str:
+    """Quote a value for the AbcExport job string.
+
+    The job string is split on whitespace, so an unquoted path or DAG name
+    containing a space (a Windows profile directory, for example) silently
+    becomes two arguments.
+    """
+    return '"{}"'.format(str(value).replace('"', ""))
+
+
 def _export_abc(
     cmds: Any,
     file_path: str,
@@ -272,9 +348,9 @@ def _export_abc(
     """Run the Alembic export job for *roots* over the frame range."""
     job_parts = ["-frameRange", str(int(start_frame)), str(int(end_frame))]
     for root in roots:
-        job_parts.extend(["-root", root])
+        job_parts.extend(["-root", _quote_job_value(root)])
     job_parts.extend(["-worldSpace", "-writeVisibility", "-uvWrite"])
-    job_parts.extend(["-file", file_path])
+    job_parts.extend(["-file", _quote_job_value(file_path)])
     cmds.AbcExport(j=" ".join(job_parts))
 
 
@@ -344,7 +420,7 @@ def export_shifter_rig(
         if not file_path or not str(file_path).strip():
             return skill_error(
                 "Missing file_path",
-                "file_path is required",
+                "missing_file_path",
                 possible_solutions=[
                     "Pass an absolute destination path such as /tmp/rig.fbx"
                 ],
@@ -390,22 +466,41 @@ def export_shifter_rig(
             )
 
         sf, ef, range_source = _resolve_frame_range(cmds, start_frame, end_frame)
+        # Both exporters are handed whole frames (the FBX bake MEL commands
+        # take integers), so report exactly what was sent instead of the
+        # unrounded input.
+        export_start, export_end = int(round(sf)), int(round(ef))
         plugins_loaded = _ensure_plugins(cmds, fmt)
 
-        # Selection drives the FBX exporter; ABC is told the roots explicitly.
-        cmds.select(roots, replace=True)
+        # A previous export at this path would otherwise satisfy the read-back
+        # even if this run's exporter silently failed (MEL reports errors
+        # without raising).  Remove it first; if it cannot be removed (locked
+        # file on Windows) fall back to comparing mtimes.
+        prior_mtime = _discard_previous_export(target_path)
+
         metrics = _collect_metrics(cmds, roots)
 
-        if fmt == FORMAT_FBX:
-            _export_fbx(mel, target_path, sf, ef, bake_animation)
-        else:
-            _export_abc(cmds, target_path, roots, sf, ef)
+        # Selection drives the FBX exporter; ABC is told the roots explicitly.
+        previous_selection = _current_selection(cmds)
+        try:
+            cmds.select(roots, replace=True)
+            if fmt == FORMAT_FBX:
+                _export_fbx(mel, target_path, export_start, export_end, bake_animation)
+            else:
+                _export_abc(cmds, target_path, roots, export_start, export_end)
+        finally:
+            _restore_selection(cmds, previous_selection)
 
-        # Read the export back — a zero-byte or missing file is a failure even
-        # when the exporter reported no error.
+        # Read the export back — a zero-byte, missing, or untouched file is a
+        # failure even when the exporter reported no error.
         file_exists = os.path.isfile(target_path)
         file_size = os.path.getsize(target_path) if file_exists else 0
-        if not file_exists or file_size == 0:
+        reused_existing = (
+            file_exists
+            and prior_mtime is not None
+            and os.path.getmtime(target_path) == prior_mtime
+        )
+        if not file_exists or file_size == 0 or reused_existing:
             return skill_error(
                 "Export produced no file: {}".format(target_path),
                 "empty_export",
@@ -417,10 +512,11 @@ def export_shifter_rig(
                 file_format=fmt,
                 file_exists=file_exists,
                 file_size_bytes=file_size,
+                reused_existing_file=reused_existing,
                 rig_roots=roots,
                 detection_method=detection_method,
-                start_frame=sf,
-                end_frame=ef,
+                start_frame=export_start,
+                end_frame=export_end,
             )
 
         return skill_success(
@@ -431,8 +527,8 @@ def export_shifter_rig(
                 _human_size(file_size),
                 metrics["joint_count"],
                 metrics["control_count"],
-                int(sf),
-                int(ef),
+                export_start,
+                export_end,
             ),
             file_path=target_path,
             file_format=fmt,
@@ -441,8 +537,9 @@ def export_shifter_rig(
             rig_roots=roots,
             detection_method=detection_method,
             frame_range_source=range_source,
-            start_frame=sf,
-            end_frame=ef,
+            start_frame=export_start,
+            end_frame=export_end,
+            selection_restored=True,
             plugins_loaded=plugins_loaded,
             mgear=_probe_mgear(),
             **metrics,
