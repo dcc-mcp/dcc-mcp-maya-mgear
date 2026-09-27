@@ -81,6 +81,16 @@ def _normalize_path(path: str) -> str:
 
 _NAMESPACE_CLEAN_RE = re.compile(r"[^a-zA-Z0-9_]")
 
+# "procedure does not exist" as Maya words it, per locale.  Checked together
+# with the procedure name so an unrelated error that merely mentions the
+# procedure ("FBXImportMaterials: invalid flag") still raises.
+_MISSING_PROCEDURE_MARKERS: Tuple[str, ...] = (
+    "找不到过程",
+    "Cannot find procedure",
+    "No such procedure",
+    "is not a procedure",
+)
+
 
 def _make_namespace(asset_id: str) -> str:
     """Build a Maya-safe namespace from *asset_id*."""
@@ -184,14 +194,23 @@ def _try_mel(mel: Any, command: str) -> Optional[str]:
     Other errors still propagate — only an unknown procedure is tolerated.
     """
     procedure = "FBXImportMaterials"
+    if procedure not in command:
+        return mel.eval(command)
+
     try:
         return mel.eval(command)
     except Exception as exc:  # noqa: BLE001
         message = str(exc)
-        # Match on the procedure name rather than a localised message: Maya
-        # echoes the name in "找不到过程“FBXImportMaterials”。" / "Cannot find
-        # procedure \"FBXImportMaterials\"", so this survives a language change.
-        if procedure in command and procedure in message:
+        # Both conditions are required.  The procedure name alone is too
+        # broad: "FBXImportMaterials: invalid flag" mentions it too and would
+        # be swallowed, leaving the setting unapplied while the import
+        # continues.  The missing-procedure wording alone is too brittle
+        # because it is localised; Maya echoes the procedure name in every
+        # language, so name + wording together survive both a locale change
+        # and an unrelated error.
+        if procedure in message and any(
+            m in message for m in _MISSING_PROCEDURE_MARKERS
+        ):
             logger.warning(
                 "MEL procedure %s is unavailable in this Maya build; "
                 "continuing without it",
@@ -308,18 +327,84 @@ def _apply_placement(
 # ---------------------------------------------------------------------------
 
 
-def _apply_material_mode(cmds: Any, material_mode: str) -> List[ImportWarning]:
+def _strip_materials_from_nodes(cmds: Any, imported_nodes: List[str]) -> List[str]:
+    """Delete the shading engines and materials owned by *imported_nodes*.
+
+    Only this import's nodes are touched.  Deleting every shading engine in
+    the scene would wipe materials that predate the import — and on Maya 2026
+    the FBX material MEL procedure no longer aborts the import early, so this
+    path is reachable where it previously was not.
+    """
+    protected = (
+        "initialShadingGroup",
+        "lambert1",
+        "standardSurface1",
+        "particleCloud1",
+    )
+    deleted: List[str] = []
+
+    shading_engines: List[str] = []
+    for node in imported_nodes:
+        try:
+            engines = cmds.listConnections(node, type="shadingEngine") or []
+        except Exception:  # noqa: BLE001 - node may be gone or unqueryable
+            continue
+        shading_engines.extend(str(e) for e in engines)
+
+    for engine in dict.fromkeys(shading_engines):
+        if engine in protected or engine in deleted:
+            continue
+        try:
+            cmds.delete(engine)
+            deleted.append(engine)
+        except Exception:  # noqa: BLE001 - report and keep going
+            continue
+
+    # Materials are reached only through the shading engines already found on
+    # this import's nodes.  Deleting "any material without connections" would
+    # also claim unconnected materials that predate the import, which is
+    # exactly the destructive behaviour this scoping exists to prevent.
+    for engine in list(deleted):
+        try:
+            materials = cmds.listConnections(engine, type="shadingDependNode") or []
+        except Exception:  # noqa: BLE001
+            continue
+        for material in materials:
+            material = str(material)
+            if material in protected or material in deleted:
+                continue
+            try:
+                cmds.delete(material)
+                deleted.append(material)
+            except Exception:  # noqa: BLE001
+                continue
+
+    return deleted
+
+
+def _apply_material_mode(
+    cmds: Any, material_mode: str, imported_nodes: Optional[List[str]] = None
+) -> List[ImportWarning]:
     """Apply material mode after import.  Returns warnings."""
     warnings: List[ImportWarning] = []
 
     if material_mode == "skip":
+        if not imported_nodes:
+            # Without the imported nodes there is no way to strip only theirs,
+            # and a scene-wide delete would destroy pre-existing materials.
+            warnings.append(
+                ImportWarning(
+                    code=ImportWarningCode.UNSUPPORTED_FEATURE,
+                    message="Skipped material removal: imported nodes unknown",
+                    detail=(
+                        "material_mode='skip' only removes materials owned by "
+                        "this import; refusing to delete scene-wide materials."
+                    ),
+                )
+            )
+            return warnings
         try:
-            for sg in cmds.ls(type="shadingEngine") or []:
-                if sg != "initialShadingGroup":
-                    cmds.delete(sg)
-            for mat in cmds.ls(mat=True) or []:
-                if mat not in ("lambert1", "standardSurface1", "particleCloud1"):
-                    cmds.delete(mat)
+            _strip_materials_from_nodes(cmds, imported_nodes)
         except Exception as exc:  # noqa: BLE001
             warnings.append(
                 ImportWarning(
@@ -591,7 +676,7 @@ def import_to_scene(request: ImportToSceneRequest) -> Dict[str, Any]:
 
     # --- Apply material mode ------------------------------------------------
     if material_mode != "as_authored":
-        mat_warnings = _apply_material_mode(cmds, material_mode)
+        mat_warnings = _apply_material_mode(cmds, material_mode, imported_long)
         warnings.extend(mat_warnings)
 
     # --- Assign to display layer --------------------------------------------
