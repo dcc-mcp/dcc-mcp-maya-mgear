@@ -1,61 +1,196 @@
 """Build a rig from an existing Shifter guide in the scene.
 
-Real mGear API: ``mgear.shifter.guide_manager.build_from_selection()``
-(guide_manager.py:86-95).  This function takes no arguments — it builds
-whatever guide(s) are currently selected in Maya.
+Real mGear API: ``mgear.shifter.Rig().buildFromSelection()`` — the same call
+``mgear.shifter.guide_manager.build_from_selection()`` wraps
+(guide_manager.py:86-95).  It takes no arguments and builds whatever guide(s)
+are currently selected in Maya; upstream it **returns nothing** (it only
+returns ``build_data`` when the ``data_collector`` option is on).
+
+So the rig root is not taken from the return value — it is read back from
+the built rig: ``Rig.model`` (mGear stamps ``is_rig`` on it in
+``shifter/__init__.py``) with an ``mgear.shifter.utils.get_rig()``-style
+attribute query as the fallback.  Joint / control / transform counts are then
+read back from that root, so the numbers describe the rig that was just
+built rather than the whole scene.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
 def _select_guide(guide_name: str) -> bool:
-    """Select a guide node in Maya by name.  Returns True on success."""
+    """Select a guide node in Maya by name.  Returns True on success.
+
+    Existence is checked explicitly: ``cmds.select`` silently ignores unknown
+    names in some Maya versions, which would build whatever happened to be
+    selected instead of failing loudly.
+    """
     try:
         import maya.cmds as cmds  # noqa: PLC0415
     except ImportError:
         return False
     try:
+        if hasattr(cmds, "objExists") and not cmds.objExists(guide_name):
+            return False
         cmds.select(guide_name, replace=True)
         return True
     except Exception:
         return False
 
 
-def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
-    """Build a rig via ``build_from_selection()`` — the real mGear API.
+def _run_build() -> Tuple[Any, str]:
+    """Run the mGear build for the current selection.
 
-    The function takes **no arguments**.  The caller must pre-select the
-    target guide(s) in Maya before invoking.
+    Returns ``(rig, build_method)``.  *rig* is the ``mgear.shifter.Rig``
+    instance when that class is importable, otherwise ``None`` — the legacy
+    ``guide_manager.build_from_selection()`` entry point keeps no reference to
+    the rig it builds.
     """
+    import mgear.shifter as shifter
+
+    rig_class = getattr(shifter, "Rig", None)
+    if rig_class is not None:
+        rig = rig_class()
+        # Returns build_data only when the data_collector option is enabled;
+        # the normal build returns None.  The return value is not the rig.
+        rig.buildFromSelection()
+        return rig, "shifter.Rig.buildFromSelection"
+
     import mgear.shifter.guide_manager as gui_mgr
 
+    # Older mGear: identical work, but the Rig object is discarded upstream.
+    gui_mgr.build_from_selection()
+    return None, "shifter.guide_manager.build_from_selection"
+
+
+def _existing_rig_roots(cmds: Any) -> set:
+    """Rig roots already in the scene, used to tell a new rig from an old one."""
+    try:
+        return {
+            str(n) for n in (cmds.ls("*.is_rig", type="transform", long=True) or [])
+        }
+    except Exception:  # noqa: BLE001 - best effort only
+        return set()
+
+
+def _resolve_rig_roots(
+    cmds: Any, rig: Any, pre_existing: Optional[set] = None
+) -> Tuple[List[str], str]:
+    """Resolve the built rig root(s) as long DAG names.
+
+    Order: ``rig.model`` (the root mGear creates and stamps with ``is_rig``),
+    then the same ``ls("*.is_rig")`` query ``mgear.shifter.utils.get_rig()``
+    uses — preferring roots that were **not** in the scene before the build.
+    Returns ``(roots, source)``; ``source`` is ``"unresolved"`` when nothing
+    could be found, which callers must treat as "the build produced no rig".
+    """
+    candidates: List[str] = []
+
+    model = getattr(rig, "model", None)
+    if model:
+        candidates.append(str(model))
+
+    source = "rig.model"
+    if not candidates:
+        try:
+            found = cmds.ls("*.is_rig", type="transform", long=True) or []
+        except Exception:  # noqa: BLE001 - keep trying the wider query
+            found = []
+        found = [str(n) for n in found]
+        fresh = [n for n in found if n not in (pre_existing or set())]
+        if fresh:
+            candidates, source = fresh, "attribute:is_rig"
+        elif found:
+            # Only rigs that predate this build.  mGear may have rebuilt over
+            # them, or it may have refused the build entirely — flag it rather
+            # than guessing, so the caller can decide.
+            candidates, source = found, "attribute:is_rig:reused"
+
+    if not candidates:
+        return [], "unresolved"
+
+    try:
+        long_names = cmds.ls(candidates, long=True) or []
+    except Exception:  # noqa: BLE001
+        return candidates, source
+    return ([str(n) for n in long_names] or candidates), source
+
+
+def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
+    """Build the selected guide and locate the rig it produced.
+
+    The build itself takes **no arguments** — the caller must pre-select the
+    target guide(s) in Maya before invoking.
+    """
     if guide_name:
         ok = _select_guide(guide_name)
         if not ok:
             return {
-                "built_guides": [],
-                "guide_built": guide_name,
                 "error": "Guide '{}' not found in the scene".format(guide_name),
+                "guide_built": guide_name,
             }
 
-    # build_from_selection() — real mGear API (guide_manager.py:86-95)
-    # Takes 0 args; builds whatever is currently selected.
-    built = gui_mgr.build_from_selection()
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        rig, build_method = _run_build()
+        return {
+            "rig_roots": [],
+            "rig_root_source": "maya_unavailable",
+            "build_method": build_method,
+            "guide_built": guide_name or "selection",
+        }
 
-    result: Dict[str, Any] = {}
-    if isinstance(built, (list, tuple)):
-        result["built_guides"] = [str(b) for b in built]
-    elif built is not None:
-        result["built_guides"] = [str(built)]
-    else:
-        result["built_guides"] = []
+    # Snapshot before the build: mGear's buildFromSelection() returns silently
+    # (no exception, no return value) when there is no selection, the guide is
+    # invalid, or the build is stopped, so a rig found afterwards is only
+    # evidence of *this* build if it was not already there.
+    pre_existing = _existing_rig_roots(cmds)
+    rig, build_method = _run_build()
+    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing)
 
-    result["guide_built"] = guide_name or "selection"
-    return result
+    return {
+        "rig_roots": roots,
+        "rig_root_source": root_source,
+        "build_method": build_method,
+        "guide_built": guide_name or "selection",
+    }
+
+
+def _collect_rig_metrics(cmds: Any, roots: List[str]) -> Dict[str, Any]:
+    """Count joints, controls and transforms under the built rig *roots*.
+
+    Controls are the distinct transforms owning a ``nurbsCurve`` shape — the
+    shape mGear builds for every animatable control.  When *roots* is empty
+    (mGear returned nothing) the counts fall back to the whole scene and
+    ``metrics_scope`` says so.
+    """
+    scope = "rig" if roots else "scene"
+    metrics: Dict[str, Any] = {
+        "metrics_scope": scope,
+        "joint_count": 0,
+        "control_count": 0,
+        "transform_count": 0,
+    }
+    try:
+        if roots:
+            joints = cmds.ls(*roots, dag=True, type="joint", long=True) or []
+            transforms = cmds.ls(*roots, dag=True, type="transform", long=True) or []
+            curves = cmds.ls(*roots, dag=True, type="nurbsCurve", long=True) or []
+        else:
+            joints = cmds.ls(type="joint", long=True) or []
+            transforms = cmds.ls(type="transform", long=True) or []
+            curves = cmds.ls(type="nurbsCurve", long=True) or []
+    except Exception:  # noqa: BLE001 - metrics are advisory, never fatal
+        return metrics
+
+    metrics["joint_count"] = len(joints)
+    metrics["transform_count"] = len(transforms)
+    metrics["control_count"] = len({c.rsplit("|", 1)[0] for c in curves if "|" in c})
+    return metrics
 
 
 def build_shifter_rig(
@@ -78,7 +213,7 @@ def build_shifter_rig(
         except ImportError:
             return skill_error(
                 "mGear Shifter is not available",
-                "ImportError: cannot import mgear.shifter",
+                "mgear_shifter_unavailable",
                 prompt="Install mGear and ensure the Shifter module is on PYTHONPATH.",
                 mgear_available=False,
             )
@@ -88,15 +223,87 @@ def build_shifter_rig(
         if result.get("error"):
             return skill_error(
                 result["error"],
-                "Guide '{}' not found".format(result.get("guide_built", "unknown")),
+                "guide_not_found",
                 prompt="Verify the guide name. Use list_shifter_components to see available guides.",
+                detail=result["error"],
+                guide_name=result.get("guide_built", "unknown"),
             )
 
-        n_built = len(result.get("built_guides", []))
+        root_source = result.get("rig_root_source", "unresolved")
+        if root_source == "unresolved":
+            # mGear's buildFromSelection() returns silently — no exception, no
+            # return value — when nothing is selected, the guide is invalid, or
+            # the build is stopped.  Reporting success here would hand back
+            # scene-wide counts for a rig that was never built.
+            return skill_error(
+                "mGear produced no rig for guide '{}'".format(result["guide_built"]),
+                "rig_root_unresolved",
+                prompt=(
+                    "Select the Shifter guide and pass guide_name, or run "
+                    "list_shifter_components to see what is in the scene. Check "
+                    "the Maya script editor — mGear refuses a build without raising."
+                ),
+                guide_name=result["guide_built"],
+                build_method=result.get("build_method"),
+                rig_roots=[],
+                rig_root_source="unresolved",
+                possible_solutions=[
+                    "Pass guide_name explicitly",
+                    "Select the guide root before calling without guide_name",
+                    "Verify the guide passes mGear's validity check",
+                ],
+            )
+
+        roots = result.get("rig_roots", [])
+
+        metrics: Dict[str, Any] = {
+            "metrics_scope": "unavailable",
+            "joint_count": 0,
+            "control_count": 0,
+            "transform_count": 0,
+        }
+        try:
+            import maya.cmds as cmds  # noqa: PLC0415
+
+            metrics = _collect_rig_metrics(cmds, roots)
+        except ImportError:
+            pass
+
+        scope = metrics["metrics_scope"]
+        counts = ": {} joint(s), {} control(s)".format(
+            metrics["joint_count"], metrics["control_count"]
+        )
+        if scope == "rig":
+            summary = "Built rig '{}' from guide '{}'{}".format(
+                roots[0], result["guide_built"], counts
+            )
+            if root_source == "attribute:is_rig:reused":
+                summary = (
+                    "{} — the rig root predates this build, so the counts may "
+                    "include rigs built earlier".format(summary)
+                )
+        elif scope == "scene":
+            summary = (
+                "Built guide '{}'; rig root came from {} — counts below may "
+                "include rigs built earlier{}".format(
+                    result["guide_built"], root_source, counts
+                )
+            )
+        else:
+            summary = "Built guide '{}'; counts unavailable outside Maya".format(
+                result["guide_built"]
+            )
+
         return skill_success(
-            "Built {} guide(s)".format(n_built),
+            summary,
             **result,
-            prompt="Verify the generated rig in the viewport. Use export_shifter_guide_template to save as template.",
+            **metrics,
+            rig_root_reused=(root_source == "attribute:is_rig:reused"),
+            prompt=(
+                "Verify the generated rig in the viewport. Use export_shifter_rig "
+                "to write it to FBX/ABC, or export_shifter_guide_template to save "
+                "the guide as a template."
+            ),
         )
     except Exception as exc:
         return skill_exception(exc, message="Failed to build Shifter rig")

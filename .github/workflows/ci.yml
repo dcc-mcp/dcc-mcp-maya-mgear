@@ -23,10 +23,27 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check skill/
+        run: ruff check skill/ tests/
 
       - name: Run ruff format check
-        run: ruff format --check skill/
+        run: ruff format --check skill/ tests/
+
+  test:
+    name: Test Skill Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pytest pyyaml dcc-mcp-core
+
+      - name: Run skill tests
+        run: pytest tests/ -q
 
   skill-lint:
     name: Lint Skills
@@ -66,12 +83,13 @@ jobs:
           p = pathlib.Path(CANONICAL_TOOLS)
           data = yaml.safe_load(p.read_text())
           tools = data.get('tools', [])
-          assert len(tools) == 6, f'{CANONICAL_TOOLS}: Expected 6 tools, got {len(tools)}'
+          assert len(tools) == 7, f'{CANONICAL_TOOLS}: Expected 7 tools, got {len(tools)}'
           names = [t['name'] for t in tools]
           assert 'inspect_mgear_environment' in names
           assert 'list_shifter_components' in names
           assert 'create_shifter_guide_from_template' in names
           assert 'build_shifter_rig' in names
+          assert 'export_shifter_rig' in names
           assert 'export_shifter_guide_template' in names
           assert 'import_shifter_sample_template' in names
           print(f'{CANONICAL_TOOLS}: All {len(tools)} tools validated OK: {names}')
@@ -244,8 +262,8 @@ jobs:
           else:
               data = yaml.safe_load(tools_yaml.read_text())
               tools = data.get('tools', [])
-              if len(tools) != 6:
-                  errors.append(f'{tools_yaml}: expected 6 tools, got {len(tools)}')
+              if len(tools) != 7:
+                  errors.append(f'{tools_yaml}: expected 7 tools, got {len(tools)}')
 
           # metadata/depends.md must exist
           depends_md = CANONICAL / 'metadata' / 'depends.md'

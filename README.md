@@ -53,8 +53,8 @@ attach a stable session id with `--meta-json`, query `dcc-mcp-cli stats --range 
 [![DCC](https://img.shields.io/badge/dcc-maya-blue)](https://github.com/dcc-mcp/dcc-mcp-maya)
 
 mGear Shifter rigging integration for the DCC-MCP ecosystem — inspect mGear
-environments, list Shifter components, create guides, build rigs, and export
-templates through typed MCP tools.
+environments, list Shifter components, create guides, build rigs, export rigs
+to FBX/Alembic, and export templates through typed MCP tools.
 
 ## Repository Layout
 
@@ -63,7 +63,7 @@ skill/maya-mgear/               ← canonical installable skill package
 ├── SKILL.md
 ├── tools.yaml
 ├── metadata/depends.md
-└── scripts/                    ← 6 mGear tools
+└── scripts/                    ← 7 mGear tools
 skill/mgear-import-to-scene/    ← import-to-scene skill package
 ├── SKILL.md
 ├── tools.yaml
@@ -95,7 +95,7 @@ the skill is automatically registered with the running Maya adapter.
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `maya-mgear` | 6 | Inspect, list, create, build, export, and import mGear Shifter components |
+| `maya-mgear` | 7 | Inspect, list, create, build, export rigs, export templates, and import mGear Shifter components |
 | `mgear-import-to-scene` | 1 | Import mGear rigs into the Maya scene via an AssetDescriptor contract |
 
 ### Tools
@@ -107,7 +107,8 @@ the skill is automatically registered with the running Maya adapter.
 | `inspect_mgear_environment` | Check mGear availability, version, and module diagnostics |
 | `list_shifter_components` | List Shifter component types and scene guides |
 | `create_shifter_guide_from_template` | Create a guide from a named template at a position |
-| `build_shifter_rig` | Build a rig from an existing Shifter guide |
+| `build_shifter_rig` | Build a rig from an existing Shifter guide and report rig-scoped joint / control counts |
+| `export_shifter_rig` | Export a built rig (with animation) to FBX/Alembic, returning byte size and scene metrics |
 | `export_shifter_guide_template` | Export a guide or component as a reusable template |
 | `import_shifter_sample_template` | Import an official sample template (e.g. quadruped.sgt) with structured metadata |
 
@@ -116,6 +117,35 @@ the skill is automatically registered with the running Maya adapter.
 | Tool | Description |
 |------|-------------|
 | `mgear_import_to_scene` | Import an mGear rig into the scene from a file path with optional loader configuration |
+
+### Build → export round-trip
+
+```python
+# 1. Probe the host before touching mGear
+inspect_mgear_environment(verbose=True)      # -> mgear_available, version, modules
+
+# 2. Build from a guide — counts are read back from the rig that was built
+build_shifter_rig(guide_name="biped_guide")
+#    -> rig_roots, rig_root_source, joint_count, control_count, transform_count
+#    returns an error (rig_root_unresolved) if mGear silently refuses the build
+
+# 3. Write the rig (and its animation) out
+export_shifter_rig(
+    file_path="/abs/path/biped.fbx",          # .abc selects the Alembic exporter
+    start_frame=1,
+    end_frame=120,
+)
+#    -> file_size_bytes, joint_count, control_count, mesh_count, keyframe_count
+
+# 4. Round-trip check the file you just wrote
+mgear_import_to_scene(descriptor={"asset_id": "biped", "variants": [{"local_path": "/abs/path/biped.fbx"}]})
+```
+
+`export_shifter_rig` resolves the rig root from an explicit `objects` /
+`rig_root` argument, then from mGear rig-root attributes, then the selection,
+and finally from a name heuristic.  It reports which one matched
+(`detection_method`), creates missing parent directories, and reads the file
+back — a missing or zero-byte file is reported as a failure, not a success.
 
 ## Prerequisites
 
