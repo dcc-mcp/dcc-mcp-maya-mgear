@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.2...dcc-mcp-maya-mgear-v0.9.0) (2026-09-27)
+
+
+### Features
+
+* **mgear:** add export_shifter_rig tool and rig build metrics ([#63](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/63)) ([21a3973](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/21a39730ad1c45333ce219472bca0a2fc0f39066))
+
+
+### Bug Fixes
+
+* **mgear:** detect rig roots via attributeQuery and require build evidence ([d16884d](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/d16884d81e07421f96fdd9744b6ffe57b406c460))
+
 ## [0.8.2](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.1...dcc-mcp-maya-mgear-v0.8.2) (2026-07-19)
 
 
