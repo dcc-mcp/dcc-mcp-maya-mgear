@@ -147,6 +147,29 @@ class FakeScene:
             raise RuntimeError("No object matches name: {}".format(args[0]))
 
 
+def make_maya_from_scene(scene: "FakeScene") -> Any:
+    """Install *scene* as ``maya.cmds`` without needing pytest's monkeypatch."""
+    cmds = MagicMock()
+    for name in (
+        "objExists",
+        "ls",
+        "attributeQuery",
+        "playbackOptions",
+        "pluginInfo",
+        "loadPlugin",
+        "keyframe",
+        "select",
+    ):
+        setattr(cmds, name, getattr(scene, name))
+    import sys as _sys
+
+    maya_module = MagicMock()
+    maya_module.cmds = cmds
+    _sys.modules["maya"] = maya_module
+    _sys.modules["maya.cmds"] = cmds
+    return cmds
+
+
 def make_maya(
     monkeypatch: pytest.MonkeyPatch,
     scene: FakeScene,

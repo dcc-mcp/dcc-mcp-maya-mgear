@@ -38,10 +38,17 @@ def _find_template_path(template_name: str) -> Optional[str]:
     if not shifter_paths:
         return None
 
+    # Layout shipped by mGear (verified against 5.2.1):
+    # ``mgear/shifter/component/_templates/<name>`` — the same path upstream
+    # ``io.import_sample_template()`` builds.
     for base in shifter_paths:
-        candidate = os.path.join(base, "guide_templates", name)
-        if os.path.isfile(candidate):
-            return candidate
+        for subdir in (
+            os.path.join("component", "_templates"),
+            "guide_templates",
+        ):
+            candidate = os.path.join(base, subdir, name)
+            if os.path.isfile(candidate):
+                return candidate
 
     # Fallback: search broader mgear install tree
     try:
@@ -51,7 +58,11 @@ def _find_template_path(template_name: str) -> Optional[str]:
 
     mgear_paths = getattr(mgear, "__path__", [])
     for base in mgear_paths:
-        for subdir in ("shifter/guide_templates", "guide_templates"):
+        for subdir in (
+            os.path.join("shifter", "component", "_templates"),
+            os.path.join("shifter", "guide_templates"),
+            "guide_templates",
+        ):
             candidate = os.path.join(base, subdir, name)
             if os.path.isfile(candidate):
                 return candidate
@@ -59,21 +70,54 @@ def _find_template_path(template_name: str) -> Optional[str]:
     return None
 
 
+def _find_guide_root() -> Optional[str]:
+    """Find the guide root the import just created, as a long DAG name.
+
+    ``mgear.shifter.io.import_guide_template()`` returns ``None`` (verified on
+    mGear 5.2.1), and ``mgear.shifter.utils.get_guide()`` returns an
+    *attribute* name such as ``"guide.ismodel"`` rather than a node — the same
+    ``ls("*.attr")`` trap the rig-root lookups hit.  Scanning transforms for
+    the ``ismodel`` attribute mGear stamps on the guide root is reliable.
+    """
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        return None
+
+    try:
+        nodes = cmds.ls(type="transform", long=True) or []
+    except Exception:  # noqa: BLE001
+        return None
+
+    for node in nodes:
+        try:
+            if cmds.attributeQuery("ismodel", node=node, exists=True):
+                return str(node)
+        except Exception:  # noqa: BLE001, PERF203
+            continue
+    return None
+
+
 def _import_template(file_path: str) -> str:
     """Import a .sgt template and return the root guide node.
 
-    Delegates to ``mgear.shifter.io.import_guide_template(filePath)``.
+    Delegates to ``mgear.shifter.io.import_guide_template(filePath)`` for the
+    import itself, then resolves the guide root from the scene because that
+    API returns ``None``.
     """
     import mgear.shifter.io as shifter_io  # noqa: PLC0415
 
-    result = shifter_io.import_guide_template(filePath=file_path)
+    shifter_io.import_guide_template(filePath=file_path)
 
-    # The API may return a single root node or a list of created nodes
-    if isinstance(result, (list, tuple)):
-        if result:
-            return str(result[0])
-        raise RuntimeError("import_guide_template() returned an empty list")
-    return str(result)
+    root = _find_guide_root()
+    if root:
+        return root
+
+    # The import still populated the scene; only the root lookup failed.
+    raise RuntimeError(
+        "import_guide_template() populated the scene but no guide root "
+        "carrying the 'ismodel' attribute was found"
+    )
 
 
 def _inspect_imported_guide(root_node: str) -> Dict[str, Any]:

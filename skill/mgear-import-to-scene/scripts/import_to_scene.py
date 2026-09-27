@@ -177,6 +177,30 @@ def _tag_asset_id(cmds: Any, node: str, asset_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _try_mel(mel: Any, command: str) -> Optional[str]:
+    """Run a MEL command, skipping it when this Maya build does not have it.
+
+    Returns the command's result, or ``None`` when the procedure is missing.
+    Other errors still propagate — only an unknown procedure is tolerated.
+    """
+    try:
+        return mel.eval(command)
+    except Exception as exc:  # noqa: BLE001
+        message = str(exc)
+        if "FBXImportMaterials" in command and (
+            "找不到过程" in message
+            or "Cannot find procedure" in message
+            or "No such procedure" in message
+        ):
+            logger.warning(
+                "MEL procedure %s is unavailable in this Maya build; "
+                "continuing without it",
+                command,
+            )
+            return None
+        raise
+
+
 def _file_import(
     cmds: Any,
     file_path: str,
@@ -192,12 +216,17 @@ def _file_import(
     if format_ == AssetFormat.FBX:
         from maya import mel  # noqa: PLC0415
 
+        # The FBX plug-in's MEL surface is not stable across Maya versions:
+        # ``FBXImportMaterials`` exists up to Maya 2025 but was removed in
+        # Maya 2026 ("找不到过程 FBXImportMaterials"), and a missing procedure
+        # raises, aborting the whole import.  Only the commands that actually
+        # exist are applied.
         mel.eval("FBXResetImport")
-        mel.eval("FBXImportMode -v add")
+        _try_mel(mel, "FBXImportMode -v add")
         if material_mode == "skip":
-            mel.eval("FBXImportMaterials -v false")
+            _try_mel(mel, "FBXImportMaterials -v false")
         else:
-            mel.eval("FBXImportMaterials -v true")
+            _try_mel(mel, "FBXImportMaterials -v true")
         import_kwargs["type"] = "FBX"
         import_kwargs["ignoreVersion"] = True
         import_kwargs["options"] = "fbx"
