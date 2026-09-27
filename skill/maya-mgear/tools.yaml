@@ -77,6 +77,57 @@ tools:
         type: string
         description: Name of the guide to build from. Builds whatever is selected if not specified.
 
+- name: export_shifter_rig
+  description: >
+    Export a built Shifter rig (with its animation) to FBX or Alembic (.abc)
+    and report verifiable metrics. Resolves the rig root from an explicit
+    name, an explicit node list, or mGear rig-root attributes; creates the
+    parent directory when missing; reads the file back and returns byte size
+    plus joint / control / mesh / keyframe counts and the exported frame range.
+  execution: sync
+  affinity: main
+  group: mgear
+  input_schema:
+    type: object
+    required:
+    - file_path
+    properties:
+      file_path:
+        type: string
+        description: >
+          Destination file path. Parent directories are created if missing and
+          the canonical extension is appended when the path has none.
+      file_format:
+        type: string
+        enum:
+        - fbx
+        - abc
+        description: >
+          Export format. fbx uses the fbxmaya plug-in; abc uses AbcExport.
+          Omit to infer the format from the file extension (defaults to fbx
+          when the extension says nothing).
+      rig_root:
+        type: string
+        description: >
+          Name of the built rig root to export. Omit to auto-detect the mGear
+          rig root from the scene.
+      objects:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        description: Explicit nodes to export. Takes precedence over rig_root.
+      start_frame:
+        type: number
+        description: Export start frame. Defaults to the timeline start.
+      end_frame:
+        type: number
+        description: Export end frame. Defaults to the timeline end.
+      bake_animation:
+        type: boolean
+        default: true
+        description: Bake complex animation into the exported range (FBX only).
+
 - name: export_shifter_guide_template
   description: Export a Shifter guide or component as a reusable template file.
   execution: sync

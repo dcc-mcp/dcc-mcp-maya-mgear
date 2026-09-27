@@ -2,23 +2,32 @@
 
 Real mGear API: ``mgear.shifter.guide_manager.build_from_selection()``
 (guide_manager.py:86-95).  This function takes no arguments — it builds
-whatever guide(s) are currently selected in Maya.
+whatever guide(s) are currently selected in Maya.  The build result is
+read back afterwards (joint / control / transform counts) so callers get
+verifiable numbers instead of only the returned node names.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 
 def _select_guide(guide_name: str) -> bool:
-    """Select a guide node in Maya by name.  Returns True on success."""
+    """Select a guide node in Maya by name.  Returns True on success.
+
+    Existence is checked explicitly: ``cmds.select`` silently ignores unknown
+    names in some Maya versions, which would build whatever happened to be
+    selected instead of failing loudly.
+    """
     try:
         import maya.cmds as cmds  # noqa: PLC0415
     except ImportError:
         return False
     try:
+        if hasattr(cmds, "objExists") and not cmds.objExists(guide_name):
+            return False
         cmds.select(guide_name, replace=True)
         return True
     except Exception:
@@ -58,6 +67,39 @@ def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
     return result
 
 
+def _collect_rig_metrics(cmds: Any, roots: List[str]) -> Dict[str, Any]:
+    """Count joints, controls and transforms under the built rig *roots*.
+
+    Controls are the distinct transforms owning a ``nurbsCurve`` shape — the
+    shape mGear builds for every animatable control.  When *roots* is empty
+    (mGear returned nothing) the counts fall back to the whole scene and
+    ``metrics_scope`` says so.
+    """
+    scope = "rig" if roots else "scene"
+    metrics: Dict[str, Any] = {
+        "metrics_scope": scope,
+        "joint_count": 0,
+        "control_count": 0,
+        "transform_count": 0,
+    }
+    try:
+        if roots:
+            joints = cmds.ls(*roots, dag=True, type="joint", long=True) or []
+            transforms = cmds.ls(*roots, dag=True, type="transform", long=True) or []
+            curves = cmds.ls(*roots, dag=True, type="nurbsCurve", long=True) or []
+        else:
+            joints = cmds.ls(type="joint", long=True) or []
+            transforms = cmds.ls(type="transform", long=True) or []
+            curves = cmds.ls(type="nurbsCurve", long=True) or []
+    except Exception:  # noqa: BLE001 - metrics are advisory, never fatal
+        return metrics
+
+    metrics["joint_count"] = len(joints)
+    metrics["transform_count"] = len(transforms)
+    metrics["control_count"] = len({c.rsplit("|", 1)[0] for c in curves if "|" in c})
+    return metrics
+
+
 def build_shifter_rig(
     guide_name: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -93,10 +135,37 @@ def build_shifter_rig(
             )
 
         n_built = len(result.get("built_guides", []))
+
+        metrics: Dict[str, Any] = {
+            "metrics_scope": "unavailable",
+            "joint_count": 0,
+            "control_count": 0,
+            "transform_count": 0,
+        }
+        try:
+            import maya.cmds as cmds  # noqa: PLC0415
+
+            metrics = _collect_rig_metrics(cmds, result.get("built_guides", []))
+        except ImportError:
+            pass
+
+        joint_count = metrics["joint_count"]
+        control_count = metrics["control_count"]
+        summary = "Built {} guide(s)".format(n_built)
+        if metrics["metrics_scope"] != "unavailable":
+            summary = "{}: {} joint(s), {} control(s)".format(
+                summary, joint_count, control_count
+            )
+
         return skill_success(
-            "Built {} guide(s)".format(n_built),
+            summary,
             **result,
-            prompt="Verify the generated rig in the viewport. Use export_shifter_guide_template to save as template.",
+            **metrics,
+            prompt=(
+                "Verify the generated rig in the viewport. Use export_shifter_rig "
+                "to write it to FBX/ABC, or export_shifter_guide_template to save "
+                "the guide as a template."
+            ),
         )
     except Exception as exc:
         return skill_exception(exc, message="Failed to build Shifter rig")
