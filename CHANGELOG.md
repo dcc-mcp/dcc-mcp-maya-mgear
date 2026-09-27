@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.9.0...dcc-mcp-maya-mgear-v0.9.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **mgear:** reach the real sample templates, resolve the guide root, and skip missing FBX MEL procedures ([#66](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/issues/66)) ([0b331a7](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/commit/0b331a7a5eaa62caeb96aef8dcff32bc2eb5389d))
+
 ## [0.9.0](https://github.com/dcc-mcp/dcc-mcp-maya-mgear/compare/dcc-mcp-maya-mgear-v0.8.2...dcc-mcp-maya-mgear-v0.9.0) (2026-09-27)
 
 
