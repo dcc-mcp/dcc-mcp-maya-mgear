@@ -73,16 +73,6 @@ class FakeScene:
         if kwargs.get("assemblies"):
             return [n for n in self.nodes if n.count("|") == 1]
 
-        attr_patterns = [a for a in args if isinstance(a, str) and a.startswith("*.")]
-        if attr_patterns:
-            matched: List[str] = []
-            for pattern in attr_patterns:
-                attr = pattern.split(".", 1)[1]
-                for node, node_attrs in self.attrs.items():
-                    if attr in node_attrs and node in self.nodes:
-                        matched.append(node)
-            return matched
-
         # Maya accepts both ``ls("a", "b")`` and ``ls(["a", "b"])".
         flat: List[str] = []
         for arg in args:
@@ -90,8 +80,22 @@ class FakeScene:
                 flat.extend(str(a) for a in arg)
             elif isinstance(arg, str):
                 flat.append(arg)
-        roots = [self._expand(a) for a in flat]
-        if roots:
+
+        attr_patterns = [a for a in flat if a.startswith("*.")]
+        roots = [self._expand(a) for a in flat if not a.startswith("*.")]
+
+        if attr_patterns:
+            # Real Maya returns *attribute* names for a ``*.attr`` pattern
+            # (``"biped_rig.is_rig"``), not node names — so a ``type="
+            # filter applied below drops every result.  Reproducing that is
+            # what keeps this fake from validating a broken query.
+            pool = []
+            for pattern in attr_patterns:
+                attr = pattern.split(".", 1)[1]
+                for node, node_attrs in self.attrs.items():
+                    if attr in node_attrs and node in self.nodes:
+                        pool.append("{}.{}".format(node.lstrip("|"), attr))
+        elif roots:
             if not kwargs.get("dag"):
                 return [r for r in roots if r in self.nodes]
             pool: List[str] = []
@@ -116,6 +120,10 @@ class FakeScene:
 
     def loadPlugin(self, _plugin: str) -> None:
         return None
+
+    def attributeQuery(self, attribute: str, node: str = "", **_kwargs: Any) -> bool:
+        """Mirror ``cmds.attributeQuery(attr, node=n, exists=True)``."""
+        return attribute in self.attrs.get(self._expand(node), ())
 
     def keyframe(self, *_args: Any, **kwargs: Any) -> Any:
         # Maya returns a scalar for one target and a list of per-target counts
@@ -154,9 +162,13 @@ def make_maya(
     that read-back is the behaviour under test.
     """
     cmds = MagicMock()
+    # Every command in this list is backed by the fake; anything else stays a
+    # MagicMock, so a command the scripts start using is visible as a mock
+    # rather than silently returning a truthy default.
     for name in (
         "objExists",
         "ls",
+        "attributeQuery",
         "playbackOptions",
         "pluginInfo",
         "loadPlugin",
@@ -238,3 +250,15 @@ def biped_scene() -> FakeScene:
         attrs={"|biped_rig": ("is_rig",)},
         keyframe_count=240.0,
     )
+
+
+def assert_real_maya_attr_query_semantics(scene: FakeScene) -> None:
+    """Guard the Maya behaviour the rig-root lookups depend on.
+
+    On a real Maya host ``ls("*.attr")`` returns **attribute** names, so
+    combining the pattern with ``type="transform"`` yields ``[]``.  The fake
+    reproduces that; if it ever stops, every test that claims to exercise the
+    attribute path is validating a query that cannot work in Maya.
+    """
+    assert scene.ls("*.is_rig") == ["biped_rig.is_rig"]
+    assert scene.ls("*.is_rig", type="transform", long=True) == []

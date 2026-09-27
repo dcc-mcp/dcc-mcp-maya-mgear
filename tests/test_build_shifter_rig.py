@@ -219,3 +219,25 @@ def test_build_entry_point_delegates(
 
     assert result["success"] is True, result
     assert _ctx(result)["joint_count"] == 0
+
+
+def test_build_rejects_an_unresolvable_rig_model(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rig.model name Maya cannot resolve must not pass as a built rig.
+
+    On a real host this produced metrics_scope="rig" with joint/control/transform
+    all zero and success: true — the last remaining silent false-success.
+    """
+    mgear = make_mgear(monkeypatch)
+    mgear.shifter.Rig.return_value.model = "nonexistent_rig_root"
+    scene = FakeScene(
+        nodes={"|guide1": "transform", "|a_Jnt": "joint"},
+    )
+    make_maya(monkeypatch, scene)
+
+    result = script.build_shifter_rig("guide1")
+
+    assert result["success"] is False, result
+    assert result["error"] == "rig_root_unresolved"
+    assert _ctx(result)["rig_roots"] == []
