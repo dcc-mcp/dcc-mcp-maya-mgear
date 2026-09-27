@@ -107,7 +107,7 @@ the skill is automatically registered with the running Maya adapter.
 | `inspect_mgear_environment` | Check mGear availability, version, and module diagnostics |
 | `list_shifter_components` | List Shifter component types and scene guides |
 | `create_shifter_guide_from_template` | Create a guide from a named template at a position |
-| `build_shifter_rig` | Build a rig from an existing Shifter guide and report joint / control counts |
+| `build_shifter_rig` | Build a rig from an existing Shifter guide and report rig-scoped joint / control counts |
 | `export_shifter_rig` | Export a built rig (with animation) to FBX/Alembic, returning byte size and scene metrics |
 | `export_shifter_guide_template` | Export a guide or component as a reusable template |
 | `import_shifter_sample_template` | Import an official sample template (e.g. quadruped.sgt) with structured metadata |
@@ -124,8 +124,10 @@ the skill is automatically registered with the running Maya adapter.
 # 1. Probe the host before touching mGear
 inspect_mgear_environment(verbose=True)      # -> mgear_available, version, modules
 
-# 2. Build from a guide — counts are read back from the scene
-build_shifter_rig(guide_name="biped_guide")  # -> joint_count, control_count, transform_count
+# 2. Build from a guide — counts are read back from the rig that was built
+build_shifter_rig(guide_name="biped_guide")
+#    -> rig_roots, rig_root_source, joint_count, control_count, transform_count
+#    returns an error (rig_root_unresolved) if mGear silently refuses the build
 
 # 3. Write the rig (and its animation) out
 export_shifter_rig(

@@ -452,3 +452,29 @@ def test_export_falls_back_to_name_heuristic(
     ctx = _ctx(result)
     assert ctx["detection_method"] == "name_heuristic"
     assert ctx["rig_roots"] == ["|hero_rig"]
+
+
+def test_export_reports_when_the_selection_could_not_be_restored(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    cmds, _mel = make_maya(monkeypatch, biped_scene)
+    real_select = cmds.select
+    calls = {"n": 0}
+
+    def _select(*args: Any, **kwargs: Any) -> None:
+        calls["n"] += 1
+        if calls["n"] > 1:  # the restore call, not the export selection
+            raise RuntimeError("selection restore failed")
+        real_select(*args, **kwargs)
+
+    monkeypatch.setattr(cmds, "select", _select)
+
+    result = script.export_shifter_rig(str(tmp_path / "restore.fbx"))
+
+    # The export itself succeeded; the failed restore must be reported, not
+    # claimed as restored.
+    assert result["success"] is True, result
+    assert _ctx(result)["selection_restored"] is False

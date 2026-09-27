@@ -75,9 +75,28 @@ def test_build_falls_back_to_is_rig_query_on_legacy_mgear(
     """
     shifter = make_mgear(monkeypatch).shifter
     guide_manager = shifter.guide_manager
-    guide_manager.build_from_selection.return_value = None
     shifter.Rig = None  # older mGear: no Rig class on mgear.shifter
-    make_maya(monkeypatch, _rig_scene())
+
+    # The rig does not exist until the build creates it — that is what makes
+    # the post-build attribute query evidence of *this* build.
+    scene = FakeScene(nodes={"|biped_guide": "transform"})
+
+    def _legacy_build() -> None:
+        scene.nodes.update(
+            {
+                "|biped_rig": "transform",
+                "|biped_rig|root_Jnt": "joint",
+                "|biped_rig|spine_Jnt": "joint",
+                "|biped_rig|body_ctl": "transform",
+                "|biped_rig|body_ctl|body_ctlShape": "nurbsCurve",
+                "|stray_Jnt": "joint",
+            }
+        )
+        scene.attrs["|biped_rig"] = ("is_rig",)
+        return None  # upstream has no return
+
+    guide_manager.build_from_selection.side_effect = _legacy_build
+    make_maya(monkeypatch, scene)
 
     result = script.build_shifter_rig("biped_guide")
 
@@ -91,10 +110,18 @@ def test_build_falls_back_to_is_rig_query_on_legacy_mgear(
     assert ctx["joint_count"] == 2
 
 
-def test_build_reports_scene_scope_when_root_unresolved(
+def test_build_fails_when_mgear_silently_refuses(
     script: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """mGear returns without raising when nothing is selected / guide invalid.
+
+    Upstream Rig.buildFromSelection() has three no-exception return paths and
+    Rig.__init__ never sets self.model, so this is the ordinary outcome of
+    calling the tool with nothing selected.  It must not look like a build.
+    """
     mgear = make_mgear(monkeypatch)
+    # Silent refusal: no exception, build_data is None, model never assigned.
+    mgear.shifter.Rig.return_value.buildFromSelection.return_value = None
     mgear.shifter.Rig.return_value.model = None
     make_maya(
         monkeypatch,
@@ -103,12 +130,39 @@ def test_build_reports_scene_scope_when_root_unresolved(
 
     result = script.build_shifter_rig("guide1")
 
+    assert result["success"] is False
+    assert result["error"] == "rig_root_unresolved"
+    assert _ctx(result)["rig_roots"] == []
+    # No counts at all — scene-wide numbers would be the old P1 failure mode.
+    assert "joint_count" not in _ctx(result)
+
+
+def test_build_reports_reuse_when_only_an_older_rig_exists(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rig that predates the build is flagged instead of passed off as new."""
+    mgear = make_mgear(monkeypatch)
+    mgear.shifter.Rig.return_value.model = None
+    make_maya(
+        monkeypatch,
+        FakeScene(
+            nodes={
+                "|guide1": "transform",
+                "|old_rig": "transform",
+                "|old_rig|j": "joint",
+            },
+            attrs={"|old_rig": ("is_rig",)},
+        ),
+    )
+
+    result = script.build_shifter_rig("guide1")
+
     assert result["success"] is True, result
     ctx = _ctx(result)
-    assert ctx["rig_roots"] == []
-    assert ctx["metrics_scope"] == "scene"
-    # The message must not claim a rig was located.
-    assert "rig root could not be resolved" in result["message"]
+    assert ctx["rig_root_source"] == "attribute:is_rig:reused"
+    assert ctx["rig_root_reused"] is True
+    assert ctx["rig_roots"] == ["|old_rig"]
+    assert "predates this build" in result["message"]
 
 
 def test_build_without_metrics_when_maya_missing(

@@ -66,12 +66,26 @@ def _run_build() -> Tuple[Any, str]:
     return None, "shifter.guide_manager.build_from_selection"
 
 
-def _resolve_rig_roots(cmds: Any, rig: Any) -> Tuple[List[str], str]:
+def _existing_rig_roots(cmds: Any) -> set:
+    """Rig roots already in the scene, used to tell a new rig from an old one."""
+    try:
+        return {
+            str(n) for n in (cmds.ls("*.is_rig", type="transform", long=True) or [])
+        }
+    except Exception:  # noqa: BLE001 - best effort only
+        return set()
+
+
+def _resolve_rig_roots(
+    cmds: Any, rig: Any, pre_existing: Optional[set] = None
+) -> Tuple[List[str], str]:
     """Resolve the built rig root(s) as long DAG names.
 
-    Order: ``rig.model`` (the root mGear creates and stamps with ``is_rig``)
-    and, when that is unavailable, the same ``ls("*.is_rig")`` query
-    ``mgear.shifter.utils.get_rig()`` uses.  Returns ``(roots, source)``.
+    Order: ``rig.model`` (the root mGear creates and stamps with ``is_rig``),
+    then the same ``ls("*.is_rig")`` query ``mgear.shifter.utils.get_rig()``
+    uses — preferring roots that were **not** in the scene before the build.
+    Returns ``(roots, source)``; ``source`` is ``"unresolved"`` when nothing
+    could be found, which callers must treat as "the build produced no rig".
     """
     candidates: List[str] = []
 
@@ -85,8 +99,15 @@ def _resolve_rig_roots(cmds: Any, rig: Any) -> Tuple[List[str], str]:
             found = cmds.ls("*.is_rig", type="transform", long=True) or []
         except Exception:  # noqa: BLE001 - keep trying the wider query
             found = []
-        candidates = [str(n) for n in found]
-        source = "attribute:is_rig"
+        found = [str(n) for n in found]
+        fresh = [n for n in found if n not in (pre_existing or set())]
+        if fresh:
+            candidates, source = fresh, "attribute:is_rig"
+        elif found:
+            # Only rigs that predate this build.  mGear may have rebuilt over
+            # them, or it may have refused the build entirely — flag it rather
+            # than guessing, so the caller can decide.
+            candidates, source = found, "attribute:is_rig:reused"
 
     if not candidates:
         return [], "unresolved"
@@ -112,16 +133,24 @@ def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
                 "guide_built": guide_name,
             }
 
-    rig, build_method = _run_build()
-
-    roots: List[str] = []
-    root_source = "unresolved"
     try:
         import maya.cmds as cmds  # noqa: PLC0415
-
-        roots, root_source = _resolve_rig_roots(cmds, rig)
     except ImportError:
-        root_source = "maya_unavailable"
+        rig, build_method = _run_build()
+        return {
+            "rig_roots": [],
+            "rig_root_source": "maya_unavailable",
+            "build_method": build_method,
+            "guide_built": guide_name or "selection",
+        }
+
+    # Snapshot before the build: mGear's buildFromSelection() returns silently
+    # (no exception, no return value) when there is no selection, the guide is
+    # invalid, or the build is stopped, so a rig found afterwards is only
+    # evidence of *this* build if it was not already there.
+    pre_existing = _existing_rig_roots(cmds)
+    rig, build_method = _run_build()
+    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing)
 
     return {
         "rig_roots": roots,
@@ -200,6 +229,31 @@ def build_shifter_rig(
                 guide_name=result.get("guide_built", "unknown"),
             )
 
+        root_source = result.get("rig_root_source", "unresolved")
+        if root_source == "unresolved":
+            # mGear's buildFromSelection() returns silently — no exception, no
+            # return value — when nothing is selected, the guide is invalid, or
+            # the build is stopped.  Reporting success here would hand back
+            # scene-wide counts for a rig that was never built.
+            return skill_error(
+                "mGear produced no rig for guide '{}'".format(result["guide_built"]),
+                "rig_root_unresolved",
+                prompt=(
+                    "Select the Shifter guide and pass guide_name, or run "
+                    "list_shifter_components to see what is in the scene. Check "
+                    "the Maya script editor — mGear refuses a build without raising."
+                ),
+                guide_name=result["guide_built"],
+                build_method=result.get("build_method"),
+                rig_roots=[],
+                rig_root_source="unresolved",
+                possible_solutions=[
+                    "Pass guide_name explicitly",
+                    "Select the guide root before calling without guide_name",
+                    "Verify the guide passes mGear's validity check",
+                ],
+            )
+
         roots = result.get("rig_roots", [])
 
         metrics: Dict[str, Any] = {
@@ -223,11 +277,16 @@ def build_shifter_rig(
             summary = "Built rig '{}' from guide '{}'{}".format(
                 roots[0], result["guide_built"], counts
             )
+            if root_source == "attribute:is_rig:reused":
+                summary = (
+                    "{} — the rig root predates this build, so the counts may "
+                    "include rigs built earlier".format(summary)
+                )
         elif scope == "scene":
             summary = (
-                "Built guide '{}' but the rig root could not be resolved "
-                "(source: {}); counts below are scene-wide{}".format(
-                    result["guide_built"], result["rig_root_source"], counts
+                "Built guide '{}'; rig root came from {} — counts below may "
+                "include rigs built earlier{}".format(
+                    result["guide_built"], root_source, counts
                 )
             )
         else:
@@ -239,6 +298,7 @@ def build_shifter_rig(
             summary,
             **result,
             **metrics,
+            rig_root_reused=(root_source == "attribute:is_rig:reused"),
             prompt=(
                 "Verify the generated rig in the viewport. Use export_shifter_rig "
                 "to write it to FBX/ABC, or export_shifter_guide_template to save "

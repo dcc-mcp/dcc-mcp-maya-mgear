@@ -279,19 +279,23 @@ def _current_selection(cmds: Any) -> List[str]:
         return []
 
 
-def _restore_selection(cmds: Any, selection: List[str]) -> None:
+def _restore_selection(cmds: Any, selection: List[str]) -> bool:
     """Put back what :func:`_current_selection` captured.
 
-    Exporting must not silently drop the artist's selection.
+    Exporting must not silently drop the artist's selection.  Returns whether
+    the restore succeeded, so the result never claims more than it did.
     """
     try:
         if selection:
             existing = [n for n in selection if cmds.objExists(n)]
+            if not existing:
+                return False
             cmds.select(existing, replace=True)
         else:
             cmds.select(clear=True)
+        return True
     except Exception:  # noqa: BLE001 - never fail an export over this
-        pass
+        return False
 
 
 def _discard_previous_export(file_path: str) -> Optional[float]:
@@ -299,6 +303,12 @@ def _discard_previous_export(file_path: str) -> Optional[float]:
 
     Returns the previous mtime when the file existed, so a file that could
     not be deleted can still be detected as unchanged after the export.
+
+    Known boundary: on a filesystem with coarse mtime granularity (1s on ext3
+    and some network shares) a genuinely fresh export can share the previous
+    mtime and be reported as ``empty_export``.  That direction is safe — the
+    tool fails closed rather than passing off an old file — but it is a
+    boundary, not a guarantee.
     """
     try:
         if not os.path.isfile(file_path):
@@ -489,17 +499,19 @@ def export_shifter_rig(
             else:
                 _export_abc(cmds, target_path, roots, export_start, export_end)
         finally:
-            _restore_selection(cmds, previous_selection)
+            selection_restored = _restore_selection(cmds, previous_selection)
 
         # Read the export back — a zero-byte, missing, or untouched file is a
         # failure even when the exporter reported no error.
         file_exists = os.path.isfile(target_path)
         file_size = os.path.getsize(target_path) if file_exists else 0
-        reused_existing = (
-            file_exists
-            and prior_mtime is not None
-            and os.path.getmtime(target_path) == prior_mtime
-        )
+        reused_existing = False
+        if file_exists and prior_mtime is not None:
+            try:
+                reused_existing = os.path.getmtime(target_path) == prior_mtime
+            except OSError:
+                # Unreadable mtime — fall back to the existence/size check.
+                reused_existing = False
         if not file_exists or file_size == 0 or reused_existing:
             return skill_error(
                 "Export produced no file: {}".format(target_path),
@@ -539,7 +551,7 @@ def export_shifter_rig(
             frame_range_source=range_source,
             start_frame=export_start,
             end_frame=export_end,
-            selection_restored=True,
+            selection_restored=selection_restored,
             plugins_loaded=plugins_loaded,
             mgear=_probe_mgear(),
             **metrics,
