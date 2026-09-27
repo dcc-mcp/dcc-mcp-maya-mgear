@@ -103,7 +103,7 @@ def test_prefers_a_guide_root_created_by_this_import(
     )
     cmds, _mel = conftest.make_maya(monkeypatch, scene)
 
-    root, source = script._find_guide_root(set(), True)
+    root, source = script._find_guide_root(set())
     assert root == "|guide"
     assert source == "attribute:ismodel"
     assert cmds.attributeQuery("ismodel", node="|guide", exists=True) is True
@@ -116,7 +116,7 @@ def test_returns_none_when_no_guide_root_exists(
 
     conftest.make_maya(monkeypatch, conftest.FakeScene(nodes={"|persp": "transform"}))
 
-    assert script._find_guide_root(set(), True) == (None, "unresolved")
+    assert script._find_guide_root(set()) == (None, "unresolved")
 
 
 def test_rejects_a_guide_root_that_predates_the_import(
@@ -137,12 +137,15 @@ def test_rejects_a_guide_root_that_predates_the_import(
         ),
     )
 
-    assert script._find_guide_root({"|guide"}, False) == (None, "unresolved")
+    root, source = script._find_guide_root({"|guide"})
+    assert root is None
+    assert source == "attribute:ismodel:reused"
 
 
-def test_flags_a_reused_guide_root_when_the_import_changed_the_scene(
+def test_reports_reuse_when_only_older_guides_exist(
     script: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """No new guide means no root to return — the source still says why."""
     import conftest
 
     conftest.make_maya(
@@ -152,6 +155,42 @@ def test_flags_a_reused_guide_root_when_the_import_changed_the_scene(
         ),
     )
 
-    root, source = script._find_guide_root({"|guide"}, True)
-    assert root == "|guide"
+    root, source = script._find_guide_root({"|guide"})
+    assert root is None
     assert source == "attribute:ismodel:reused"
+
+
+def test_tool_fails_when_the_import_creates_no_new_guide(
+    script: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End-to-end: an older guide must not be reported as this template's root.
+
+    Rule from the release gate: never return success pointing at the previous
+    template. The failure must carry assertable fields, not just a message.
+    """
+    import conftest
+
+    conftest.make_maya(
+        monkeypatch,
+        conftest.FakeScene(
+            nodes={"|guide": "transform"}, attrs={"|guide": ("ismodel",)}
+        ),
+    )
+
+    # A real mGear layout (so the template resolves), but the import itself
+    # is a no-op — the void API that made this failure mode possible.
+    _make_mgear(monkeypatch, tmp_path, os.path.join("component", "_templates"))
+
+    shifter_io = ModuleType("mgear.shifter.io")
+    shifter_io.import_guide_template = lambda **_kw: None
+    monkeypatch.setattr(sys.modules["mgear.shifter"], "io", shifter_io, raising=False)
+    monkeypatch.setitem(sys.modules, "mgear.shifter.io", shifter_io)
+
+    result = script.import_shifter_sample_template("biped.sgt")
+
+    assert result["success"] is False
+    assert result["error"] == "guide_root_not_created"
+    ctx = result["context"]
+    assert ctx["guide_root_source"] == "attribute:ismodel:reused"
+    assert ctx["guide_root_reused"] is True
+    assert "imported_guide_root" not in ctx
