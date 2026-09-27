@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
-import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -30,9 +29,15 @@ def script() -> Any:
     return module
 
 
-def _make_mgear(monkeypatch: pytest.MonkeyPatch, layout: str) -> ModuleType:
-    """Build a fake ``mgear.shifter`` package holding one .sgt at *layout*."""
-    root = tempfile.mkdtemp(prefix="mgear_templates_")
+def _make_mgear(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, layout: str
+) -> ModuleType:
+    """Build a fake ``mgear.shifter`` package holding one .sgt at *layout*.
+
+    Uses pytest's ``tmp_path`` so the tree is owned (and cleaned up) by pytest
+    rather than an orphaned ``mkdtemp`` directory.
+    """
+    root = str(tmp_path)
     templates = os.path.join(root, "mgear", "shifter", layout)
     os.makedirs(templates)
     Path(templates, "biped.sgt").write_bytes(b'{"guide": true}')
@@ -55,9 +60,9 @@ def _make_mgear(monkeypatch: pytest.MonkeyPatch, layout: str) -> ModuleType:
     ],
 )
 def test_finds_templates_in_both_layouts(
-    script: Any, monkeypatch: pytest.MonkeyPatch, layout: str
+    script: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, layout: str
 ) -> None:
-    _make_mgear(monkeypatch, layout)
+    _make_mgear(monkeypatch, tmp_path, layout)
 
     found = script._find_template_path("biped.sgt")
 
@@ -67,22 +72,24 @@ def test_finds_templates_in_both_layouts(
 
 
 def test_finds_template_when_extension_is_omitted(
-    script: Any, monkeypatch: pytest.MonkeyPatch
+    script: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _make_mgear(monkeypatch, os.path.join("component", "_templates"))
+    _make_mgear(monkeypatch, tmp_path, os.path.join("component", "_templates"))
 
     assert script._find_template_path("biped") is not None
 
 
 def test_returns_none_for_a_missing_template(
-    script: Any, monkeypatch: pytest.MonkeyPatch
+    script: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _make_mgear(monkeypatch, os.path.join("component", "_templates"))
+    _make_mgear(monkeypatch, tmp_path, os.path.join("component", "_templates"))
 
     assert script._find_template_path("nope.sgt") is None
 
 
-def test_resolves_the_guide_root_from_the_scene(script: Any) -> None:
+def test_resolves_the_guide_root_from_the_scene(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Upstream import_guide_template() returns None, so the root is looked up.
 
     get_guide() is not usable either: it returns an attribute name
@@ -94,15 +101,17 @@ def test_resolves_the_guide_root_from_the_scene(script: Any) -> None:
         nodes={"|guide": "transform", "|guide|arm": "transform"},
         attrs={"|guide": ("ismodel",)},
     )
-    cmds = conftest.make_maya_from_scene(scene)
+    cmds, _mel = conftest.make_maya(monkeypatch, scene)
 
     assert script._find_guide_root() == "|guide"
     assert cmds.attributeQuery("ismodel", node="|guide", exists=True) is True
 
 
-def test_returns_none_when_no_guide_root_exists(script: Any) -> None:
+def test_returns_none_when_no_guide_root_exists(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import conftest
 
-    conftest.make_maya_from_scene(conftest.FakeScene(nodes={"|persp": "transform"}))
+    conftest.make_maya(monkeypatch, conftest.FakeScene(nodes={"|persp": "transform"}))
 
     assert script._find_guide_root() is None

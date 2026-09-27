@@ -59,6 +59,10 @@ class FakeScene:
     def objExists(self, name: str) -> bool:
         return str(name) in self.nodes or "|{}".format(name) in self.nodes
 
+    def attributeQuery(self, attribute: str, node: str = "", **_kwargs: Any) -> bool:
+        """Mirror ``cmds.attributeQuery(attr, node=n, exists=True)``."""
+        return attribute in self.attrs.get(self._expand(node), ())
+
     def _expand(self, name: str) -> str:
         """Resolve a short DAG name the way Maya does (``rig`` -> ``|rig``)."""
         if name in self.nodes:
@@ -145,29 +149,6 @@ class FakeScene:
         if args and isinstance(args[0], str) and not self.objExists(args[0]):
             # Real maya.cmds.select raises when nothing matches the name.
             raise RuntimeError("No object matches name: {}".format(args[0]))
-
-
-def make_maya_from_scene(scene: "FakeScene") -> Any:
-    """Install *scene* as ``maya.cmds`` without needing pytest's monkeypatch."""
-    cmds = MagicMock()
-    for name in (
-        "objExists",
-        "ls",
-        "attributeQuery",
-        "playbackOptions",
-        "pluginInfo",
-        "loadPlugin",
-        "keyframe",
-        "select",
-    ):
-        setattr(cmds, name, getattr(scene, name))
-    import sys as _sys
-
-    maya_module = MagicMock()
-    maya_module.cmds = cmds
-    _sys.modules["maya"] = maya_module
-    _sys.modules["maya.cmds"] = cmds
-    return cmds
 
 
 def make_maya(
