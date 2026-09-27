@@ -170,9 +170,9 @@ def test_skip_mode_leaves_unconnected_preexisting_materials(
     monkeypatch.setattr(
         cmds,
         "listConnections",
-        lambda node, type=None, **_kw: ["newSG"]
-        if str(node) == "|imported" and type == "shadingEngine"
-        else [],
+        lambda node, type=None, **_kw: (
+            ["newSG"] if str(node) == "|imported" and type == "shadingEngine" else []
+        ),
     )
     monkeypatch.setattr(cmds, "ls", lambda *a, **k: ["orphanMat", "lambert1"])
     deleted = []
