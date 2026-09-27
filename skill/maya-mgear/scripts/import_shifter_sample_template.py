@@ -12,7 +12,7 @@ calls.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
@@ -70,53 +70,108 @@ def _find_template_path(template_name: str) -> Optional[str]:
     return None
 
 
-def _find_guide_root() -> Optional[str]:
-    """Find the guide root the import just created, as a long DAG name.
+def _scan_guide_roots(cmds: Any) -> List[str]:
+    """Long names of the transforms carrying the ``ismodel`` attribute.
+
+    ``mgear.shifter.utils.get_guide()`` is not usable here: it returns an
+    *attribute* name such as ``"guide.ismodel"`` rather than a node — the same
+    ``ls("*.attr")`` trap the rig-root lookups hit.  Scanning transforms with
+    ``attributeQuery`` is the working equivalent.
+    """
+    try:
+        nodes = cmds.ls(type="transform", long=True) or []
+    except Exception:  # noqa: BLE001
+        return []
+
+    found: List[str] = []
+    for node in nodes:
+        try:
+            if cmds.attributeQuery("ismodel", node=node, exists=True):
+                found.append(str(node))
+        except Exception:  # noqa: BLE001, PERF203
+            continue
+    return found
+
+
+def _scene_signature(cmds: Any) -> Tuple[int, int]:
+    """Cheap fingerprint telling whether the import changed the scene at all.
+
+    ``import_guide_template()`` is void, so this is the only direct evidence
+    that it actually populated the scene.
+    """
+    try:
+        return (
+            len(cmds.ls(type="transform", long=True) or []),
+            len(cmds.ls(type="joint", long=True) or []),
+        )
+    except Exception:  # noqa: BLE001
+        return (-1, -1)
+
+
+def _find_guide_root(
+    pre_existing: Optional[set] = None, scene_changed: bool = True
+) -> Tuple[Optional[str], str]:
+    """Find the guide root the import created.  Returns ``(root, source)``.
 
     ``mgear.shifter.io.import_guide_template()`` returns ``None`` (verified on
-    mGear 5.2.1), and ``mgear.shifter.utils.get_guide()`` returns an
-    *attribute* name such as ``"guide.ismodel"`` rather than a node — the same
-    ``ls("*.attr")`` trap the rig-root lookups hit.  Scanning transforms for
-    the ``ismodel`` attribute mGear stamps on the guide root is reliable.
+    mGear 5.2.1), so the root has to come from the scene — but a guide that
+    was **already** there is not evidence this import created anything, and
+    returning it would point the caller at the wrong template.  Roots that
+    appeared during the import win; an older root is only accepted when the
+    import demonstrably changed the scene, and is flagged as reused.
     """
     try:
         import maya.cmds as cmds  # noqa: PLC0415
     except ImportError:
-        return None
+        return None, "maya_unavailable"
 
-    try:
-        nodes = cmds.ls(type="transform", long=True) or []
-    except Exception:  # noqa: BLE001
-        return None
-
-    for node in nodes:
-        try:
-            if cmds.attributeQuery("ismodel", node=node, exists=True):
-                return str(node)
-        except Exception:  # noqa: BLE001, PERF203
-            continue
-    return None
+    found = _scan_guide_roots(cmds)
+    fresh = [n for n in found if n not in (pre_existing or set())]
+    if fresh:
+        return fresh[0], "attribute:ismodel"
+    if found and scene_changed:
+        return found[0], "attribute:ismodel:reused"
+    return None, "unresolved"
 
 
-def _import_template(file_path: str) -> str:
-    """Import a .sgt template and return the root guide node.
+def _import_template(file_path: str) -> Tuple[str, str]:
+    """Import a .sgt template and return ``(root guide node, source)``.
 
     Delegates to ``mgear.shifter.io.import_guide_template(filePath)`` for the
     import itself, then resolves the guide root from the scene because that
-    API returns ``None``.
+    API returns ``None``.  The scene is snapshotted first so a guide that was
+    already present is not mistaken for this import's guide.
     """
     import mgear.shifter.io as shifter_io  # noqa: PLC0415
 
+    pre_existing: Optional[set] = None
+    before: Optional[Tuple[int, int]] = None
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+
+        pre_existing = set(_scan_guide_roots(cmds))
+        before = _scene_signature(cmds)
+    except ImportError:
+        pass
+
     shifter_io.import_guide_template(filePath=file_path)
 
-    root = _find_guide_root()
-    if root:
-        return root
+    scene_changed = True
+    if before is not None:
+        try:
+            import maya.cmds as cmds  # noqa: PLC0415
 
-    # The import still populated the scene; only the root lookup failed.
+            scene_changed = _scene_signature(cmds) != before
+        except ImportError:
+            scene_changed = True
+
+    root, source = _find_guide_root(pre_existing, scene_changed)
+    if root:
+        return root, source
+
     raise RuntimeError(
-        "import_guide_template() populated the scene but no guide root "
-        "carrying the 'ismodel' attribute was found"
+        "import_guide_template() did not create a guide root: no transform "
+        "carrying the 'ismodel' attribute was added to the scene"
     )
 
 
@@ -230,7 +285,7 @@ def import_shifter_sample_template(
                 template_name=template_name,
             )
 
-        root_node = _import_template(file_path)
+        root_node, root_source = _import_template(file_path)
         metadata = _inspect_imported_guide(root_node)
 
         if select_guide:
@@ -243,6 +298,8 @@ def import_shifter_sample_template(
             template_name=template_name,
             file_path=file_path,
             imported_guide_root=root_node,
+            guide_root_source=root_source,
+            guide_root_reused=(root_source == "attribute:ismodel:reused"),
             component_count=metadata.get("component_count", 0),
             component_names=metadata.get("component_names", []),
             top_level_nodes=metadata.get("top_level_nodes", [root_node]),

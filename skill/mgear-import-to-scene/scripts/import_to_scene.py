@@ -183,19 +183,19 @@ def _try_mel(mel: Any, command: str) -> Optional[str]:
     Returns the command's result, or ``None`` when the procedure is missing.
     Other errors still propagate — only an unknown procedure is tolerated.
     """
+    procedure = "FBXImportMaterials"
     try:
         return mel.eval(command)
     except Exception as exc:  # noqa: BLE001
         message = str(exc)
-        if "FBXImportMaterials" in command and (
-            "找不到过程" in message
-            or "Cannot find procedure" in message
-            or "No such procedure" in message
-        ):
+        # Match on the procedure name rather than a localised message: Maya
+        # echoes the name in "找不到过程“FBXImportMaterials”。" / "Cannot find
+        # procedure \"FBXImportMaterials\"", so this survives a language change.
+        if procedure in command and procedure in message:
             logger.warning(
                 "MEL procedure %s is unavailable in this Maya build; "
                 "continuing without it",
-                command,
+                procedure,
             )
             return None
         raise

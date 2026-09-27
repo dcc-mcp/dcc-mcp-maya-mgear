@@ -87,7 +87,7 @@ def test_returns_none_for_a_missing_template(
     assert script._find_template_path("nope.sgt") is None
 
 
-def test_resolves_the_guide_root_from_the_scene(
+def test_prefers_a_guide_root_created_by_this_import(
     script: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Upstream import_guide_template() returns None, so the root is looked up.
@@ -103,7 +103,9 @@ def test_resolves_the_guide_root_from_the_scene(
     )
     cmds, _mel = conftest.make_maya(monkeypatch, scene)
 
-    assert script._find_guide_root() == "|guide"
+    root, source = script._find_guide_root(set(), True)
+    assert root == "|guide"
+    assert source == "attribute:ismodel"
     assert cmds.attributeQuery("ismodel", node="|guide", exists=True) is True
 
 
@@ -114,4 +116,42 @@ def test_returns_none_when_no_guide_root_exists(
 
     conftest.make_maya(monkeypatch, conftest.FakeScene(nodes={"|persp": "transform"}))
 
-    assert script._find_guide_root() is None
+    assert script._find_guide_root(set(), True) == (None, "unresolved")
+
+
+def test_rejects_a_guide_root_that_predates_the_import(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A guide that was already there is not evidence this import created it.
+
+    Without this, importing quadruped.sgt into a scene that already holds a
+    biped guide would report success pointing at the *old* guide, so a
+    following build would build the wrong template.
+    """
+    import conftest
+
+    conftest.make_maya(
+        monkeypatch,
+        conftest.FakeScene(
+            nodes={"|guide": "transform"}, attrs={"|guide": ("ismodel",)}
+        ),
+    )
+
+    assert script._find_guide_root({"|guide"}, False) == (None, "unresolved")
+
+
+def test_flags_a_reused_guide_root_when_the_import_changed_the_scene(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import conftest
+
+    conftest.make_maya(
+        monkeypatch,
+        conftest.FakeScene(
+            nodes={"|guide": "transform"}, attrs={"|guide": ("ismodel",)}
+        ),
+    )
+
+    root, source = script._find_guide_root({"|guide"}, True)
+    assert root == "|guide"
+    assert source == "attribute:ismodel:reused"
