@@ -8,6 +8,7 @@ from typing import Any, Dict
 import pytest
 from conftest import (
     FakeScene,
+    assert_real_maya_attr_query_semantics,
     hide_maya,
     load_script,
     make_maya,
@@ -478,3 +479,29 @@ def test_export_reports_when_the_selection_could_not_be_restored(
     # claimed as restored.
     assert result["success"] is True, result
     assert _ctx(result)["selection_restored"] is False
+
+
+def test_rig_root_lookup_uses_attribute_query_not_ls_pattern(
+    script: Any,
+    monkeypatch: _pytest.MonkeyPatch,
+    biped_scene: FakeScene,
+    tmp_path: Path,
+) -> None:
+    """Real-Maya regression: ``ls("*.attr", type="transform")`` is always empty.
+
+    On a Maya 2026 host the attribute probe silently returned ``[]``, so the
+    export fell through to the selection and exported the wrong nodes while
+    still reporting success.
+    """
+    cmds, _mel = make_maya(monkeypatch, biped_scene)
+    assert_real_maya_attr_query_semantics(biped_scene)
+
+    result = script.export_shifter_rig(str(tmp_path / "autodetect.fbx"))
+
+    assert result["success"] is True, result
+    ctx = _ctx(result)
+    assert ctx["detection_method"] == "attribute:is_rig"
+    assert ctx["rig_roots"] == ["|biped_rig"]
+    # The rig, not whatever happened to be selected.
+    assert ctx["joint_count"] == 2
+    assert ctx["control_count"] == 2

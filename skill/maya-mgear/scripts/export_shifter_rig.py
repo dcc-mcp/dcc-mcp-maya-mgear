@@ -117,14 +117,29 @@ def _ensure_plugins(cmds: Any, fmt: str) -> List[str]:
 
 
 def _find_rig_roots(cmds: Any) -> Tuple[List[str], str]:
-    """Auto-detect built rig roots.  Returns (roots, detection_method)."""
+    """Auto-detect built rig roots.  Returns (roots, detection_method).
+
+    Rig roots are found by scanning transforms with ``attributeQuery``.
+    ``cmds.ls("*.attr", type="transform")`` cannot work here: Maya's ``ls``
+    returns *attribute* names for a ``*.attr`` pattern (``"rig.is_rig"``), so
+    the ``type" filter drops every result — verified on a real Maya 2026
+    host, where the query silently returns ``[]``.
+    """
+    try:
+        transforms = cmds.ls(type="transform", long=True) or []
+    except Exception:  # noqa: BLE001 - keep probing the other strategies
+        transforms = []
+
     for attr in _RIG_ROOT_ATTRIBUTES:
-        try:
-            found = cmds.ls("*.{}".format(attr), type="transform", long=True) or []
-        except Exception:  # noqa: BLE001 - malformed pattern, keep probing
-            continue
-        if found:
-            return [str(n) for n in found], "attribute:{}".format(attr)
+        matched: List[str] = []
+        for node in transforms:
+            try:
+                if cmds.attributeQuery(attr, node=node, exists=True):
+                    matched.append(str(node))
+            except Exception:  # noqa: BLE001, PERF203 - skip unqueryable nodes
+                continue
+        if matched:
+            return matched, "attribute:{}".format(attr)
 
     try:
         selection = cmds.ls(selection=True, long=True, type="transform") or []
@@ -301,14 +316,12 @@ def _restore_selection(cmds: Any, selection: List[str]) -> bool:
 def _discard_previous_export(file_path: str) -> Optional[float]:
     """Delete a stale file at *file_path* so the read-back cannot hit it.
 
-    Returns the previous mtime when the file existed, so a file that could
-    not be deleted can still be detected as unchanged after the export.
-
-    Known boundary: on a filesystem with coarse mtime granularity (1s on ext3
-    and some network shares) a genuinely fresh export can share the previous
-    mtime and be reported as ``empty_export``.  That direction is safe — the
-    tool fails closed rather than passing off an old file — but it is a
-    boundary, not a guarantee.
+    Returns the previous mtime **only when the file could not be deleted**
+    (locked or read-only), which is the sole case where the mtime comparison
+    is needed — and the only case where it is trustworthy.  When the delete
+    succeeds, any file found afterwards is this run's export, and comparing
+    mtimes would only produce false failures on filesystems with coarse
+    timestamp granularity.
     """
     try:
         if not os.path.isfile(file_path):
@@ -318,10 +331,10 @@ def _discard_previous_export(file_path: str) -> Optional[float]:
         return None
     try:
         os.remove(file_path)
+        return None
     except OSError:
         # Locked / read-only: keep the mtime and compare after the export.
-        pass
-    return prior_mtime
+        return prior_mtime
 
 
 def _export_fbx(
@@ -507,6 +520,7 @@ def export_shifter_rig(
         file_size = os.path.getsize(target_path) if file_exists else 0
         reused_existing = False
         if file_exists and prior_mtime is not None:
+            # Only reachable when the old file could not be deleted.
             try:
                 reused_existing = os.path.getmtime(target_path) == prior_mtime
             except OSError:

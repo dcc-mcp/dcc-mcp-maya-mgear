@@ -137,10 +137,47 @@ def test_build_fails_when_mgear_silently_refuses(
     assert "joint_count" not in _ctx(result)
 
 
-def test_build_reports_reuse_when_only_an_older_rig_exists(
+def test_build_accepts_a_reused_root_when_the_build_changed_the_scene(
     script: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A rig that predates the build is flagged instead of passed off as new."""
+    """Rebuilding over an existing root is reported — but flagged as reused."""
+    mgear = make_mgear(monkeypatch)
+    mgear.shifter.Rig.return_value.model = None
+    scene = FakeScene(
+        nodes={
+            "|guide1": "transform",
+            "|old_rig": "transform",
+            "|old_rig|j": "joint",
+        },
+        attrs={"|old_rig": ("is_rig",)},
+    )
+
+    # The build rebuilds over the same root, so the scene changes.
+    def _rebuild() -> None:
+        scene.nodes["|old_rig|rebuilt_Jnt"] = "joint"
+        return None
+
+    mgear.shifter.Rig.return_value.buildFromSelection.side_effect = _rebuild
+    make_maya(monkeypatch, scene)
+
+    result = script.build_shifter_rig("guide1")
+
+    assert result["success"] is True, result
+    ctx = _ctx(result)
+    assert ctx["rig_root_source"] == "attribute:is_rig:reused"
+    assert ctx["rig_root_reused"] is True
+    assert ctx["rig_roots"] == ["|old_rig"]
+    assert "predates this build" in result["message"]
+
+
+def test_build_rejects_a_pre_existing_rig_when_nothing_changed(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An older rig with no sign the build did anything is not this build's rig.
+
+    mGear refuses a build without raising, so finding a rig that was already
+    there is not evidence that anything was built.
+    """
     mgear = make_mgear(monkeypatch)
     mgear.shifter.Rig.return_value.model = None
     make_maya(
@@ -157,12 +194,9 @@ def test_build_reports_reuse_when_only_an_older_rig_exists(
 
     result = script.build_shifter_rig("guide1")
 
-    assert result["success"] is True, result
-    ctx = _ctx(result)
-    assert ctx["rig_root_source"] == "attribute:is_rig:reused"
-    assert ctx["rig_root_reused"] is True
-    assert ctx["rig_roots"] == ["|old_rig"]
-    assert "predates this build" in result["message"]
+    assert result["success"] is False
+    assert result["error"] == "rig_root_unresolved"
+    assert _ctx(result)["rig_roots"] == []
 
 
 def test_build_without_metrics_when_maya_missing(
@@ -219,3 +253,25 @@ def test_build_entry_point_delegates(
 
     assert result["success"] is True, result
     assert _ctx(result)["joint_count"] == 0
+
+
+def test_build_rejects_an_unresolvable_rig_model(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rig.model name Maya cannot resolve must not pass as a built rig.
+
+    On a real host this produced metrics_scope="rig" with joint/control/transform
+    all zero and success: true — the last remaining silent false-success.
+    """
+    mgear = make_mgear(monkeypatch)
+    mgear.shifter.Rig.return_value.model = "nonexistent_rig_root"
+    scene = FakeScene(
+        nodes={"|guide1": "transform", "|a_Jnt": "joint"},
+    )
+    make_maya(monkeypatch, scene)
+
+    result = script.build_shifter_rig("guide1")
+
+    assert result["success"] is False, result
+    assert result["error"] == "rig_root_unresolved"
+    assert _ctx(result)["rig_roots"] == []

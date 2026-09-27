@@ -66,57 +66,96 @@ def _run_build() -> Tuple[Any, str]:
     return None, "shifter.guide_manager.build_from_selection"
 
 
+def _nodes_with_attribute(cmds: Any, attribute: str) -> List[str]:
+    """Long names of the transforms carrying *attribute*.
+
+    ``cmds.ls("*.attr")`` looks like the natural query but it returns
+    **attribute** names (``"biped_rig.is_rig"``), not node names, so adding
+    ``type="transform"`` filters everything out and the result is always
+    empty.  Verified on a real Maya 2026 host.  Scanning transforms with
+    ``attributeQuery`` is the working equivalent — it is also what
+    ``list_shifter_components`` uses for guide detection.
+    """
+    try:
+        nodes = cmds.ls(type="transform", long=True) or []
+    except Exception:  # noqa: BLE001 - best effort only
+        return []
+
+    found: List[str] = []
+    for node in nodes:
+        try:
+            if cmds.attributeQuery(attribute, node=node, exists=True):
+                found.append(str(node))
+        except Exception:  # noqa: BLE001, PERF203 - skip unqueryable nodes
+            continue
+    return found
+
+
+def _resolve_names(cmds: Any, names: List[str]) -> List[str]:
+    """Resolve *names* to long DAG paths, dropping anything Maya cannot find."""
+    try:
+        long_names = cmds.ls(names, long=True) or []
+    except Exception:  # noqa: BLE001
+        return []
+    return [str(n) for n in long_names]
+
+
 def _existing_rig_roots(cmds: Any) -> set:
     """Rig roots already in the scene, used to tell a new rig from an old one."""
+    return set(_nodes_with_attribute(cmds, "is_rig"))
+
+
+def _scene_signature(cmds: Any) -> Tuple[int, int]:
+    """Cheap fingerprint telling whether the build changed the scene at all.
+
+    mGear's build entry points return nothing, so this is the only direct
+    evidence that the build did work — it is what lets a pre-existing rig
+    count as rebuilt instead of merely found.
+    """
     try:
-        return {
-            str(n) for n in (cmds.ls("*.is_rig", type="transform", long=True) or [])
-        }
+        return (
+            len(cmds.ls(type="transform", long=True) or []),
+            len(cmds.ls(type="joint", long=True) or []),
+        )
     except Exception:  # noqa: BLE001 - best effort only
-        return set()
+        return (-1, -1)
 
 
 def _resolve_rig_roots(
-    cmds: Any, rig: Any, pre_existing: Optional[set] = None
+    cmds: Any,
+    rig: Any,
+    pre_existing: Optional[set] = None,
+    scene_changed: bool = True,
 ) -> Tuple[List[str], str]:
     """Resolve the built rig root(s) as long DAG names.
 
     Order: ``rig.model`` (the root mGear creates and stamps with ``is_rig``),
-    then the same ``ls("*.is_rig")`` query ``mgear.shifter.utils.get_rig()``
-    uses — preferring roots that were **not** in the scene before the build.
-    Returns ``(roots, source)``; ``source`` is ``"unresolved"`` when nothing
-    could be found, which callers must treat as "the build produced no rig".
-    """
-    candidates: List[str] = []
+    then any transform carrying ``is_rig`` — preferring roots that were **not**
+    in the scene before the build.
 
+    A root that already existed is only accepted when the build demonstrably
+    changed the scene (``scene_changed``); otherwise handing it back would
+    report an older rig as this build's result.  Returns ``(roots, source)``;
+    ``source`` is ``"unresolved"`` when nothing could be found, which callers
+    must treat as "the build produced no rig".
+    """
     model = getattr(rig, "model", None)
     if model:
-        candidates.append(str(model))
+        resolved = _resolve_names(cmds, [str(model)])
+        if resolved:
+            # Only trust a name Maya can resolve: an unresolvable one would
+            # yield rig-scoped metrics that are all zero.
+            return resolved, "rig.model"
 
-    source = "rig.model"
-    if not candidates:
-        try:
-            found = cmds.ls("*.is_rig", type="transform", long=True) or []
-        except Exception:  # noqa: BLE001 - keep trying the wider query
-            found = []
-        found = [str(n) for n in found]
-        fresh = [n for n in found if n not in (pre_existing or set())]
-        if fresh:
-            candidates, source = fresh, "attribute:is_rig"
-        elif found:
-            # Only rigs that predate this build.  mGear may have rebuilt over
-            # them, or it may have refused the build entirely — flag it rather
-            # than guessing, so the caller can decide.
-            candidates, source = found, "attribute:is_rig:reused"
-
-    if not candidates:
-        return [], "unresolved"
-
-    try:
-        long_names = cmds.ls(candidates, long=True) or []
-    except Exception:  # noqa: BLE001
-        return candidates, source
-    return ([str(n) for n in long_names] or candidates), source
+    found = _nodes_with_attribute(cmds, "is_rig")
+    fresh = [n for n in found if n not in (pre_existing or set())]
+    if fresh:
+        return fresh, "attribute:is_rig"
+    if found and scene_changed:
+        # Rebuilt over an existing root: report it, but flag that the counts
+        # may include whatever the earlier rig contained.
+        return found, "attribute:is_rig:reused"
+    return [], "unresolved"
 
 
 def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
@@ -149,8 +188,10 @@ def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
     # invalid, or the build is stopped, so a rig found afterwards is only
     # evidence of *this* build if it was not already there.
     pre_existing = _existing_rig_roots(cmds)
+    before = _scene_signature(cmds)
     rig, build_method = _run_build()
-    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing)
+    scene_changed = _scene_signature(cmds) != before
+    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing, scene_changed)
 
     return {
         "rig_roots": roots,
