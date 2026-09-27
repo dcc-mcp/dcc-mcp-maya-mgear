@@ -105,16 +105,39 @@ def _existing_rig_roots(cmds: Any) -> set:
     return set(_nodes_with_attribute(cmds, "is_rig"))
 
 
+def _scene_signature(cmds: Any) -> Tuple[int, int]:
+    """Cheap fingerprint telling whether the build changed the scene at all.
+
+    mGear's build entry points return nothing, so this is the only direct
+    evidence that the build did work — it is what lets a pre-existing rig
+    count as rebuilt instead of merely found.
+    """
+    try:
+        return (
+            len(cmds.ls(type="transform", long=True) or []),
+            len(cmds.ls(type="joint", long=True) or []),
+        )
+    except Exception:  # noqa: BLE001 - best effort only
+        return (-1, -1)
+
+
 def _resolve_rig_roots(
-    cmds: Any, rig: Any, pre_existing: Optional[set] = None
+    cmds: Any,
+    rig: Any,
+    pre_existing: Optional[set] = None,
+    scene_changed: bool = True,
 ) -> Tuple[List[str], str]:
     """Resolve the built rig root(s) as long DAG names.
 
     Order: ``rig.model`` (the root mGear creates and stamps with ``is_rig``),
     then any transform carrying ``is_rig`` — preferring roots that were **not**
     in the scene before the build.
-    Returns ``(roots, source)``; ``source`` is ``"unresolved"`` when nothing
-    could be found, which callers must treat as "the build produced no rig".
+
+    A root that already existed is only accepted when the build demonstrably
+    changed the scene (``scene_changed``); otherwise handing it back would
+    report an older rig as this build's result.  Returns ``(roots, source)``;
+    ``source`` is ``"unresolved"`` when nothing could be found, which callers
+    must treat as "the build produced no rig".
     """
     model = getattr(rig, "model", None)
     if model:
@@ -128,10 +151,9 @@ def _resolve_rig_roots(
     fresh = [n for n in found if n not in (pre_existing or set())]
     if fresh:
         return fresh, "attribute:is_rig"
-    if found:
-        # Only rigs that predate this build.  mGear may have rebuilt over
-        # them, or it may have refused the build entirely — flag it rather
-        # than guessing, so the caller can decide.
+    if found and scene_changed:
+        # Rebuilt over an existing root: report it, but flag that the counts
+        # may include whatever the earlier rig contained.
         return found, "attribute:is_rig:reused"
     return [], "unresolved"
 
@@ -166,8 +188,10 @@ def _build_rig(guide_name: Optional[str]) -> Dict[str, Any]:
     # invalid, or the build is stopped, so a rig found afterwards is only
     # evidence of *this* build if it was not already there.
     pre_existing = _existing_rig_roots(cmds)
+    before = _scene_signature(cmds)
     rig, build_method = _run_build()
-    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing)
+    scene_changed = _scene_signature(cmds) != before
+    roots, root_source = _resolve_rig_roots(cmds, rig, pre_existing, scene_changed)
 
     return {
         "rig_roots": roots,
