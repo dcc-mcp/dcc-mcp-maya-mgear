@@ -12,11 +12,23 @@ calls.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from dcc_mcp_core.skill import skill_entry, skill_error, skill_exception, skill_success
 
 _SAMPLE_TEMPLATE_EXT = ".sgt"
+
+
+class GuideRootNotCreated(RuntimeError):
+    """Raised when the import produced no guide root this call can own."""
+
+    def __init__(self, source: str) -> None:
+        super().__init__(
+            "import_guide_template() did not create a guide root (source: {})".format(
+                source
+            )
+        )
+        self.source = source
 
 
 def _find_template_path(template_name: str) -> Optional[str]:
@@ -38,10 +50,17 @@ def _find_template_path(template_name: str) -> Optional[str]:
     if not shifter_paths:
         return None
 
+    # Layout shipped by mGear (verified against 5.2.1):
+    # ``mgear/shifter/component/_templates/<name>`` — the same path upstream
+    # ``io.import_sample_template()`` builds.
     for base in shifter_paths:
-        candidate = os.path.join(base, "guide_templates", name)
-        if os.path.isfile(candidate):
-            return candidate
+        for subdir in (
+            os.path.join("component", "_templates"),
+            "guide_templates",
+        ):
+            candidate = os.path.join(base, subdir, name)
+            if os.path.isfile(candidate):
+                return candidate
 
     # Fallback: search broader mgear install tree
     try:
@@ -51,7 +70,11 @@ def _find_template_path(template_name: str) -> Optional[str]:
 
     mgear_paths = getattr(mgear, "__path__", [])
     for base in mgear_paths:
-        for subdir in ("shifter/guide_templates", "guide_templates"):
+        for subdir in (
+            os.path.join("shifter", "component", "_templates"),
+            os.path.join("shifter", "guide_templates"),
+            "guide_templates",
+        ):
             candidate = os.path.join(base, subdir, name)
             if os.path.isfile(candidate):
                 return candidate
@@ -59,21 +82,84 @@ def _find_template_path(template_name: str) -> Optional[str]:
     return None
 
 
-def _import_template(file_path: str) -> str:
-    """Import a .sgt template and return the root guide node.
+def _scan_guide_roots(cmds: Any) -> List[str]:
+    """Long names of the transforms carrying the ``ismodel`` attribute.
 
-    Delegates to ``mgear.shifter.io.import_guide_template(filePath)``.
+    ``mgear.shifter.utils.get_guide()`` is not usable here: it returns an
+    *attribute* name such as ``"guide.ismodel"`` rather than a node — the same
+    ``ls("*.attr")`` trap the rig-root lookups hit.  Scanning transforms with
+    ``attributeQuery`` is the working equivalent.
+    """
+    try:
+        nodes = cmds.ls(type="transform", long=True) or []
+    except Exception:  # noqa: BLE001
+        return []
+
+    found: List[str] = []
+    for node in nodes:
+        try:
+            if cmds.attributeQuery("ismodel", node=node, exists=True):
+                found.append(str(node))
+        except Exception:  # noqa: BLE001, PERF203
+            continue
+    return found
+
+
+def _find_guide_root(pre_existing: Optional[set] = None) -> Tuple[Optional[str], str]:
+    """Find the guide root the import created.  Returns ``(root, source)``.
+
+    ``mgear.shifter.io.import_guide_template()`` returns ``None`` (verified on
+    mGear 5.2.1), so the root has to come from the scene — but a guide that
+    was **already there** is not evidence this import created anything.
+    Returning it would report success under the new template's name while
+    pointing at the previous template, so a following
+    ``build_shifter_rig(guide_name=...)`` would build the wrong rig.
+
+    Only roots that appeared during the import are accepted.  When nothing
+    new appeared the source is ``"attribute:ismodel:reused"`` (there are
+    older roots) or ``"unresolved"`` (there are none), and the caller must
+    fail rather than fall back.
+    """
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
+    except ImportError:
+        return None, "maya_unavailable"
+
+    found = _scan_guide_roots(cmds)
+    fresh = [n for n in found if n not in (pre_existing or set())]
+    if fresh:
+        return fresh[0], "attribute:ismodel"
+    if found:
+        return None, "attribute:ismodel:reused"
+    return None, "unresolved"
+
+
+def _import_template(file_path: str) -> Tuple[str, str]:
+    """Import a .sgt template and return ``(root guide node, source)``.
+
+    Delegates to ``mgear.shifter.io.import_guide_template(filePath)`` for the
+    import itself, then resolves the guide root from the scene because that
+    API returns ``None``.  The scene is snapshotted first so a guide that was
+    already present is not mistaken for this import's guide.
     """
     import mgear.shifter.io as shifter_io  # noqa: PLC0415
 
-    result = shifter_io.import_guide_template(filePath=file_path)
+    pre_existing: Optional[set] = None
+    try:
+        import maya.cmds as cmds  # noqa: PLC0415
 
-    # The API may return a single root node or a list of created nodes
-    if isinstance(result, (list, tuple)):
-        if result:
-            return str(result[0])
-        raise RuntimeError("import_guide_template() returned an empty list")
-    return str(result)
+        pre_existing = set(_scan_guide_roots(cmds))
+    except ImportError:
+        pass
+
+    shifter_io.import_guide_template(filePath=file_path)
+
+    root, source = _find_guide_root(pre_existing)
+    if root:
+        return root, source
+
+    # Fail rather than point at a guide this import did not create.
+    raise GuideRootNotCreated(source)
 
 
 def _inspect_imported_guide(root_node: str) -> Dict[str, Any]:
@@ -186,7 +272,7 @@ def import_shifter_sample_template(
                 template_name=template_name,
             )
 
-        root_node = _import_template(file_path)
+        root_node, root_source = _import_template(file_path)
         metadata = _inspect_imported_guide(root_node)
 
         if select_guide:
@@ -199,6 +285,8 @@ def import_shifter_sample_template(
             template_name=template_name,
             file_path=file_path,
             imported_guide_root=root_node,
+            guide_root_source=root_source,
+            guide_root_reused=(root_source == "attribute:ismodel:reused"),
             component_count=metadata.get("component_count", 0),
             component_names=metadata.get("component_names", []),
             top_level_nodes=metadata.get("top_level_nodes", [root_node]),
@@ -208,6 +296,27 @@ def import_shifter_sample_template(
                 "Use build_shifter_rig to generate the rig from this guide, "
                 "or create_shifter_guide_from_template to add individual components."
             ),
+        )
+    except GuideRootNotCreated as exc:
+        # Only older guides are present: reporting success would point the
+        # caller at the previous template, so fail with assertable fields.
+        return skill_error(
+            "Sample template '{}' produced no new guide root".format(template_name),
+            "guide_root_not_created",
+            prompt=(
+                "The scene already holds a guide and this import did not add "
+                "one. Check the Maya script editor, or import into an empty "
+                "scene / rename the existing guide first."
+            ),
+            template_name=template_name,
+            file_path=file_path,
+            guide_root_source=exc.source,
+            guide_root_reused=(exc.source == "attribute:ismodel:reused"),
+            possible_solutions=[
+                "Import into an empty scene",
+                "Delete or rename the existing guide before importing",
+                "Pass the guide root explicitly to build_shifter_rig",
+            ],
         )
     except Exception as exc:
         return skill_exception(exc, message="Failed to import Shifter sample template")

@@ -59,6 +59,10 @@ class FakeScene:
     def objExists(self, name: str) -> bool:
         return str(name) in self.nodes or "|{}".format(name) in self.nodes
 
+    def attributeQuery(self, attribute: str, node: str = "", **_kwargs: Any) -> bool:
+        """Mirror ``cmds.attributeQuery(attr, node=n, exists=True)``."""
+        return attribute in self.attrs.get(self._expand(node), ())
+
     def _expand(self, name: str) -> str:
         """Resolve a short DAG name the way Maya does (``rig`` -> ``|rig``)."""
         if name in self.nodes:
@@ -120,10 +124,6 @@ class FakeScene:
 
     def loadPlugin(self, _plugin: str) -> None:
         return None
-
-    def attributeQuery(self, attribute: str, node: str = "", **_kwargs: Any) -> bool:
-        """Mirror ``cmds.attributeQuery(attr, node=n, exists=True)``."""
-        return attribute in self.attrs.get(self._expand(node), ())
 
     def keyframe(self, *_args: Any, **kwargs: Any) -> Any:
         # Maya returns a scalar for one target and a list of per-target counts
