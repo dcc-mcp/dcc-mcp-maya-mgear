@@ -55,7 +55,7 @@ Lint config lives in `ruff.toml`: line-length 88, `target-version = "py37"`, and
   release-please skips the whole batch — no release pull request, **no version bump**
   (`strategies/base.ts` logs “No user facing commits found since … - skipping” when
   `changelogEmpty()` finds only the heading line).
-- For `release-type: python`: `chore:`/`ci:`/`style`/`refactor:`/`test:`/`build:` are
+- For `release-type: python`: `chore:`/`ci:`/`style:`/`refactor:`/`test:`/`build:` are
   `hidden: true`; `docs:` is a **visible** `Documentation` section.
 - Only once a release *is* cut does the prefix choose the bump: breaking → major,
   `feat:` → minor, anything else → patch
@@ -64,7 +64,6 @@ Lint config lives in `ruff.toml`: line-length 88, `target-version = "py37"`, and
   should cut a patch release.
 - There is **no version file in the repo** — release-please keeps the version in `.release-please-manifest.json` only.
 - `.github/workflows/release.yml` attaches a source archive to the GitHub Release, then syncs `entries[0].version` in `marketplace.json` to the released version and pushes that commit.
-- Use `chore:` for config and doc work: a `chore:`-only batch produces an empty changelog entry, so release-please skips it and the version stays put.
 
 ## Do / Don't
 
