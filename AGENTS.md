@@ -50,16 +50,22 @@ Lint config lives in `ruff.toml`: line-length 88, `target-version = "py37"`, and
 ## Release
 
 - release-please drives versioning from Conventional Commits on `main` (`release-type: python`, package-name `dcc-mcp-maya-mgear`).
-- `feat:` → minor, `fix:` → patch, `chore:`/`docs:`/`ci:` → **no release**.
+- `feat:` → minor, `fix:` → patch. Every other prefix still lands on **patch**:
+  `DefaultVersioningStrategy.determineReleaseType()` falls back to
+  `PatchVersionUpdate` when the batch has no `feat:` and no breaking change, so
+  `chore:`/`docs:`/`ci:` are **not** “no release”.
+- What those prefixes change is the changelog: `chore:`/`ci:`/`style`/`refactor`/
+  `test`/`build` are `hidden: true` sections, while `docs:` is a **visible**
+  `Documentation` section (`release-type: python`).
 - There is **no version file in the repo** — release-please keeps the version in `.release-please-manifest.json` only.
 - `.github/workflows/release.yml` attaches a source archive to the GitHub Release, then syncs `entries[0].version` in `marketplace.json` to the released version and pushes that commit.
-- Use `chore:`/`docs:` for config and doc work so release-please does not cut a valueless version.
+- Use `chore:` for config and doc work: it still bumps the version, but keeps the changelog free of valueless entries.
 
 ## Do / Don't
 
 - **Do** single-source agent instructions here. This is the only agent contract file at the repo root.
 - **Do** probe the host before touching mGear (`inspect_mgear_environment`), and prefer typed skill tools over raw MEL or `execute_python`.
-- **Do** keep skill files inside `skill/<name>/`. That is the only canonical location CI accepts.
-- **Don't** add `CLAUDE.md` / `GEMINI.md` / `CURSOR.md` / `ANTHROPIC.md` / `OPENAI.md` / `COPILOT.md` / `CODEBUDDY.md` / `.cursorrules` / `.clinerules` / `.windsurfrules` at the root. Vendor-specific notes live under `docs/integrations/`, linked from here.
+- **Do** keep skill files inside `skill/<name>/`. CI validates that location (`skill/maya-mgear/SKILL.md` and its `tools.yaml`) and rejects root-level `SKILL.md` / `tools.yaml` / `metadata/` / `scripts/`; it does not scan the whole repo for other skill files.
+- **Don't** add `CLAUDE.md` / `GEMINI.md` / `CURSOR.md` / `ANTHROPIC.md` / `OPENAI.md` / `COPILOT.md` / `CODEBUDDY.md` / `.cursorrules` / `.clinerules` / `.windsurfrules` at the root. This repo has no `docs/integrations/`; keep any vendor-specific notes here.
 - **Don't** hardcode an exact version in tests or in `marketplace.json` by hand — release-please rewrites `marketplace.json` on release.
 - **Don't** commit build artifacts to the repo root.
